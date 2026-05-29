@@ -1,0 +1,19 @@
+{
+  "name": "communication",
+  "version": "1.0.0",
+  "description": "Please describe the basic information.",
+  "main": "Index.ets",
+  "author": "",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "libcommunication.so": "file:./src/main/cpp/types/libcommunication"
+  },
+//  "native": {
+//    "targets": [
+//      {
+//        "name": "arm64-v8a",
+//        "lib": "libcommunication.so"
+//      }
+//    ]
+//  }
+}

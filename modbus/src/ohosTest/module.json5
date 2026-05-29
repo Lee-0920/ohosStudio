@@ -1,0 +1,12 @@
+{
+  "module": {
+    "name": "modbus_test",
+    "type": "feature",
+    "deviceTypes": [
+      "default",
+      "tablet"
+    ],
+    "deliveryWithInstall": true,
+    "installationFree": false
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "module": {
+    "name": "Flow",
+    "type": "har",
+    "deviceTypes": [
+      "default",
+      "tablet"
+    ]
+  }
+}

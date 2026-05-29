@@ -1,0 +1,10 @@
+{
+  "module": {
+    "name": "modbus",
+    "type": "har",
+    "deviceTypes": [
+      "default",
+      "tablet"
+    ]
+  }
+}
