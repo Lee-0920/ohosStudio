@@ -1,0 +1,10 @@
+// log/oh-package.json5
+{
+  "name": "logger",
+  "version": "1.0.0",
+  "description": "Log module",
+  "main": "Index.ets",
+  "dependencies": {
+    "liblog.so": "file:./src/main/cpp/types/liblog"
+  }
+}

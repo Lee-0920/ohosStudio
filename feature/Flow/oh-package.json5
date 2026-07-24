@@ -1,0 +1,16 @@
+{
+  "name": "flow",
+  "version": "1.0.0",
+  "description": "Please describe the basic information.",
+  "main": "Index.ets",
+  "author": "",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "libflow.so": "file:./src/main/cpp/types/libflow",
+    "base": "@module:base",
+    "controllerplugin": "@module:ControllerPlugin",
+    "pt65drivecontrollerplugin" : "@module:PT65DriveControllerPlugin",
+    "dataservice" : "@module:DataService",
+    "communication": "@module:Communication"
+  }
+}

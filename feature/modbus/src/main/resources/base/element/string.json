@@ -1,0 +1,16 @@
+{
+  "string": [
+    {
+      "name": "page_show",
+      "value": "page from package"
+    },
+    {
+      "name": "network_reason",
+      "value": "需要网络权限以连接Modbus TCP设备"
+    },
+    {
+      "name": "serial_reason",
+      "value": "需要串口权限以连接RS232/RS485设备"
+    }
+  ]
+}

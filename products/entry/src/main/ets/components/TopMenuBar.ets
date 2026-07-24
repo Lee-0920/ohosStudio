@@ -1,0 +1,91 @@
+import { UiUtil } from 'base';
+import { WqMenuItem } from '../models/monitorTypes';
+
+@Component
+export struct TopMenuBar {
+  // Currently selected menu id, controls active style.
+  @Prop currentMenu: string = 'home';
+  // Left side main navigation entries.
+  @Prop leftMenus: WqMenuItem[] = [];
+  // Right side user center entry.
+  @Prop rightMenu: WqMenuItem = { id: '', name: '', icon: $r('app.media.user') };
+  @Prop viewportWidth: number = 1024;
+  @Prop viewportHeight: number = 768;
+  @Prop scaleFactor: number = 1.92;
+  // Keep click behavior in parent container to avoid scattering navigation state.
+  onMenuClick: (menuId: string) => void = () => {
+  };
+
+  build() {
+    // Top background panel with left navigation and right user menu.
+    Stack() {
+      Image($r('app.media.top'))
+        .width('100%')
+        .height('100%')
+        .objectFit(ImageFit.Fill)
+
+      Row() {
+        // Main function menus on the left.
+        Row() {
+          ForEach(this.leftMenus, (item: WqMenuItem) => {
+            Column() {
+              Image(item.icon)
+                .width(UiUtil.vh(3.4, 22, 38, this.viewportHeight, this.scaleFactor))
+                .height(UiUtil.vh(3.4, 22, 38, this.viewportHeight, this.scaleFactor))
+                .objectFit(ImageFit.Contain)
+                .opacity(this.currentMenu === item.id ? 1 : 0.7)
+              Text(item.name)
+                .fontSize(UiUtil.vh(1.9, 12, 20, this.viewportHeight, this.scaleFactor))
+                .fontWeight(this.currentMenu === item.id ? FontWeight.Bold : FontWeight.Normal)
+                .fontColor('#FFFFFF')
+                .margin({ top: UiUtil.vh(0.7, 3, 8, this.viewportHeight, this.scaleFactor) })
+            }
+            .height(UiUtil.vh(6.84, 56, 86, this.viewportHeight, this.scaleFactor))
+            .width(UiUtil.vw(7.2, 64, 112, this.viewportWidth, this.scaleFactor))
+            .justifyContent(FlexAlign.Center)
+            .alignItems(HorizontalAlign.Center)
+            .backgroundColor(this.currentMenu === item.id ? '#4DB9B7' : 'transparent')
+            .borderRadius(UiUtil.vh(0.8, 5, 10, this.viewportHeight, this.scaleFactor))
+            .onClick(() => {
+              this.onMenuClick(item.id);
+            })
+          }, (item: WqMenuItem) => item.id)
+        }
+
+        Blank()
+
+        // User center shortcut on the right.
+        Column() {
+          Image(this.rightMenu.icon)
+            .width(UiUtil.vh(3.4, 22, 38, this.viewportHeight, this.scaleFactor))
+            .height(UiUtil.vh(3.4, 22, 38, this.viewportHeight, this.scaleFactor))
+            .objectFit(ImageFit.Contain)
+            .opacity(this.currentMenu === this.rightMenu.id ? 1 : 0.7)
+          Text(this.rightMenu.name)
+            .fontSize(UiUtil.vh(1.9, 12, 20, this.viewportHeight, this.scaleFactor))
+            .fontWeight(this.currentMenu === this.rightMenu.id ? FontWeight.Bold : FontWeight.Normal)
+            .fontColor('#FFFFFF')
+            .margin({ top: UiUtil.vh(0.7, 3, 8, this.viewportHeight, this.scaleFactor) })
+        }
+        .height(UiUtil.vh(7.6, 56, 86, this.viewportHeight, this.scaleFactor))
+        .width(UiUtil.vw(8.0, 64, 112, this.viewportWidth, this.scaleFactor))
+        .justifyContent(FlexAlign.Center)
+        .alignItems(HorizontalAlign.Center)
+        .backgroundColor(this.currentMenu === this.rightMenu.id ? '#4DB9B7' : 'transparent')
+        .borderRadius(UiUtil.vh(0.8, 5, 10, this.viewportHeight, this.scaleFactor))
+        .onClick(() => {
+          this.onMenuClick(this.rightMenu.id);
+        })
+      }
+      .height(UiUtil.vh(8.5, 50, 78, this.viewportHeight, this.scaleFactor))
+      .width('100%')
+      .alignItems(VerticalAlign.Center)
+      .padding({
+        left: UiUtil.vw(0.7, 6, 14, this.viewportWidth, this.scaleFactor),
+        right: UiUtil.vw(0.7, 6, 14, this.viewportWidth, this.scaleFactor)
+      })
+    }
+    .height(UiUtil.vh(8.5, 50, 78, this.viewportHeight, this.scaleFactor))
+    .width('100%')
+  }
+}

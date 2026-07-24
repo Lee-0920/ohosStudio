@@ -1,0 +1,8 @@
+// lhipstudio/modbus/src/main/ets/types/libentry/oh-package.json5
+
+{
+  "name": "libentry.so",
+  "types": "./Index.d.ts",
+  "version": "1.0.0",
+  "description": "Please describe the basic information."
+}

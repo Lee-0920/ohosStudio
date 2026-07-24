@@ -1,0 +1,9 @@
+{
+  "name": "alarm",
+  "version": "1.0.0",
+  "description": "Alarm and fault management module for device monitoring",
+  "main": "Index.ets",
+  "author": "",
+  "license": "Apache-2.0",
+  "dependencies": {}
+}

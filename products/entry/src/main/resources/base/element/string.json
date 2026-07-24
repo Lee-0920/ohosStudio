@@ -1,0 +1,20 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "module description"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "description"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "智慧监测"
+    },
+    {
+      "name": "network_reason",
+      "value": "需要网络权限以连接Modbus TCP设备"
+    }
+  ]
+}

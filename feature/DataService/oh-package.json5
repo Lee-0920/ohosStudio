@@ -1,0 +1,12 @@
+{
+  "name": "dataservice",
+  "version": "1.0.0",
+  "description": "数据服务模块",
+  "main": "Index.ets",
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "permission": "@module:permission",
+    "libdataservice.so": "file:./src/main/cpp/types/libdataservice"
+  },
+}

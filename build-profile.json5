@@ -4,13 +4,13 @@
       {
         "name": "default",
         "material": {
-          "certpath": "C:/Users/admin/.ohos/config/openharmony/default_lhipstudio_uCTkJhfwgizzYAoFzGAefXprDfmHddeW_BTEm0PGFF8=.cer",
+          "storeFile": "./signature/signature.p12",
+          "storePassword": "00000018C2FB1917DCC7E43E77B4BE85373A91F3C77A6A6A0DE313F8FC85A655F14EBF3278B60AEE",
           "keyAlias": "debugKey",
-          "keyPassword": "0000001B1C02BD590EB16DFD94ABB4F66D8B82062E8124F5471781BF81F912745B7481F6BCA346C1A8E3B5",
-          "profile": "C:/Users/admin/.ohos/config/openharmony/default_lhipstudio_uCTkJhfwgizzYAoFzGAefXprDfmHddeW_BTEm0PGFF8=.p7b",
+          "keyPassword": "000000184B9294F89DB106ABD130E69D6EBACF5B62E6C2221A8610DB08249AFE8C8E2CAA168EAED3",
           "signAlg": "SHA256withECDSA",
-          "storeFile": "C:/Users/admin/.ohos/config/openharmony/default_lhipstudio_uCTkJhfwgizzYAoFzGAefXprDfmHddeW_BTEm0PGFF8=.p12",
-          "storePassword": "0000001BEF71D904DF13D5E45B2F01A99B64F4312AA8B6C611DFB88B7970AE116B8198BC46893554FE335B"
+          "profile": "./signature/signature.p7b",
+          "certpath": "./signature/signature.cer"
         }
       }
     ],
@@ -22,8 +22,8 @@
         //        "compatibleSdkVersion": "5.0.3(15)",
         //        "runtimeOS": "HarmonyOS",
         "targetSdkVersion": "20",
-        "compatibleSdkVersion": 20,
-        "compileSdkVersion": 20,
+        "compatibleSdkVersion": "20",
+        "compileSdkVersion": "20",
         "runtimeOS": "OpenHarmony",
         "buildOption": {
           "strictMode": {
@@ -35,7 +35,7 @@
     ],
     "buildModeSet": [
       {
-        "name": "debug",
+        "name": "debug"
       },
       {
         "name": "release"
@@ -45,7 +45,7 @@
   "modules": [
     {
       "name": "entry",
-      "srcPath": "./entry",
+      "srcPath": "./products/entry",
       "targets": [
         {
           "name": "default",
@@ -57,7 +57,7 @@
     },
     {
       "name": "DataService",
-      "srcPath": "./DataService",
+      "srcPath": "./feature/DataService",
       "targets": [
         {
           "name": "default",
@@ -69,7 +69,7 @@
     },
     {
       "name": "Communication",
-      "srcPath": "./Communication",
+      "srcPath": "./feature/Communication",
       "targets": [
         {
           "name": "default",
@@ -81,15 +81,7 @@
     },
     {
       "name": "modbus",
-      "srcPath": "./modbus",
-    },
-    {
-      "name": "Flow",
-      "srcPath": "./Flow",
-    },
-    {
-      "name": "Core",
-      "srcPath": "./Core",
+      "srcPath": "./feature/modbus",
       "targets": [
         {
           "name": "default",
@@ -101,7 +93,7 @@
     },
     {
       "name": "ControllerPlugin",
-      "srcPath": "./ControllerPlugin",
+      "srcPath": "./feature/ControllerPlugin",
       "targets": [
         {
           "name": "default",
@@ -113,7 +105,7 @@
     },
     {
       "name": "PT65DriveControllerPlugin",
-      "srcPath": "./PT65DriveControllerPlugin",
+      "srcPath": "./feature/PT65DriveControllerPlugin",
       "targets": [
         {
           "name": "default",
@@ -122,6 +114,50 @@
           ]
         }
       ]
+    },
+    {
+      "name": "Flow",
+      "srcPath": "./feature/Flow",
+      "targets": [
+        {
+          "name": "default",
+          "applyToProducts": [
+            "default"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "base",
+      "srcPath": "./Common/base",
+      "targets": [
+        {
+          "name": "default",
+          "applyToProducts": [
+            "default"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "log",
+      "srcPath": "./Common/log",
+      "targets": [
+        {
+          "name": "default",
+          "applyToProducts": [
+            "default"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "permission",
+      "srcPath": "./Common/permission",
+    },
+    {
+      "name": "alarm",
+      "srcPath": "./Common/alarm",
     }
   ]
 }

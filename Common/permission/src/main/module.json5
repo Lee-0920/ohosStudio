@@ -1,0 +1,12 @@
+// lhipstudio/Common/permission/src/main/module.json5
+
+{
+  "module": {
+    "name": "permission",
+    "type": "har",
+    "deviceTypes": [
+      "default",
+      "tablet"
+    ]
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "name": "modbus",
+  "version": "1.0.0",
+  "description": "Please describe the basic information.",
+  "main": "src/main/ets/index.ets",
+  "types": "./Index.d.ts",
+  "author": "",
+  "license": "Apache-2.0",
+  "dependencies": {
+	"libentry.so": "file:./src/main/cpp/types/libentry",
+    "alarm": "@module:alarm",
+    "logger": "@module:log",
+    "dataservice": "@module:DataService",
+    "flow": "@module:Flow"
+  },
+  "nativePlugins": [{ "name": "libentry.so", "type": "so" }]
+}
