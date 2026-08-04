@@ -2,11 +2,12 @@ import taskpool from '@ohos.taskpool';
 import { Operator } from '../../../Flow/Operator';
 import { ParamA, TestData } from './TaskParam';
 import { Config } from '../../../Config/Config'
-import { PipeOperationParams, MaintainOperationParams, HardwareOperationParams } from "../../../Setting/Setting";
+import { PipeOperationParams, MaintainOperationParams, HardwareOperationParams, CombinePipeOperationParams } from "../../../Setting/Setting";
 import { MeasureConfig } from '../../../Flow/MeasureFlow'
-import { CleanType } from '../../../../../../Index';
+import { CleanType, MeasureType, CalibrateType } from '../../../../../../Index';
 
-type TaskParam = ParamA | TestData | Operator | Config | PipeOperationParams | MaintainOperationParams | MeasureConfig | CleanType | HardwareOperationParams;
+type TaskParam = ParamA | TestData | Operator | Config | PipeOperationParams |
+                  MaintainOperationParams | MeasureConfig | CleanType | HardwareOperationParams | MeasureType | CalibrateType | CombinePipeOperationParams;
 
 /**
  * 任务类，用来定义线程执行内容

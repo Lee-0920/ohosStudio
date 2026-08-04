@@ -28,8 +28,8 @@ export class MeasureAD {
     const tubFactor = 1; // 默认值，需根据实际配置调整
 
     //跳流程调试，不考虑暗电流导致的负值
-    if (this.blankReference <= 0 || this.blankMeasure <= 0 ||
-        // this.initReference <= 0 || this.initMeasure <= 0 ||
+    if (//this.blankReference <= 0 || this.blankMeasure <= 0 ||
+        this.initReference <= 0 || this.initMeasure <= 0 ||
         this.finalReference <= 0 || this.finalMeasure <= 0) {
       hilog.info(DOMAIN, 'MeasureAD', 'MeasureAD return 0');
       return 0;

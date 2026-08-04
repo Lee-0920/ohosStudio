@@ -15,6 +15,20 @@ export enum CalibrateType {
   onlyCalibrateStandard = 3,
 }
 
+/** 根据校准类型获取 Modbus 系统状态码 */
+function getCalibrateSystemStatusCode(calibrateType: CalibrateType): number {
+  switch (calibrateType) {
+    case CalibrateType.onlyCalibrateBlank:
+      return 29; // 零点校准
+    case CalibrateType.onlyCalibrateStandard:
+      return 30; // 量程校准
+    case CalibrateType.calibrate:
+    case CalibrateType.oneKeyMaintain:
+    default:
+      return 4; // 校准中
+  }
+}
+
 export class CalibrateFlow extends Flow {
   calibrateType: CalibrateType = CalibrateType.calibrate;
   calibrateDateTime: number = 0;
@@ -29,6 +43,10 @@ export class CalibrateFlow extends Flow {
   diluteFactor: number = 1;
   isFinish: boolean = false;
   measure:Measurer = Measurer.getInstance();
+  private currentStatusLabel: string = '';
+  private currentStatusTotalSeconds: number = 0;
+  // 本次测量生成的记录，由 worker 抛回主线程后统一入库
+  lastCalibrateRecord: CaliData | null = null;
 
 
   constructor(name: string, caliType: CalibrateType) {
@@ -130,6 +148,9 @@ export class CalibrateFlow extends Flow {
     this.isUserStop = false;
     this.isFinish = false;
 
+    // 根据校准类型设置底部状态栏显示的状态覆盖，避免显示成默认的"测量零点/量程校准液"
+    this.updateStatusOverride();
+
     this.CleanDeeplyCheckTime();
 
     if (this.curveCalibrateRange > 0) {
@@ -195,6 +216,13 @@ export class CalibrateFlow extends Flow {
       this.measure.addParam.rinseBlankVolume = (rangeConfig.rinseStandardVolume || 0) + (rangeConfig.rinseSampleVolume || 0);
       this.measure.addParam.rinseStandardVolume = 0;
 
+      // 重新设置状态覆盖，防止前面 measure.Measure() 的 finally 清除了覆盖状态
+      this.measure.setStatusOverride(
+        this.currentStatusLabel,
+        this.currentStatusTotalSeconds,
+        getCalibrateSystemStatusCode(this.calibrateType)
+      );
+
       try {
         const result = this.measure.Measure();
         measureAD1.initReference = result.initReferenceAD;
@@ -257,6 +285,13 @@ export class CalibrateFlow extends Flow {
       this.measure.addParam.rinseSampleVolume = 0;
       this.measure.addParam.rinseBlankVolume = 0;
       this.measure.addParam.rinseStandardVolume = (rangeConfig.rinseStandardVolume || 0) + (rangeConfig.rinseSampleVolume || 0);
+
+      // 重新设置状态覆盖，防止前面 measure.Measure() 的 finally 清除了覆盖状态
+      this.measure.setStatusOverride(
+        this.currentStatusLabel,
+        this.currentStatusTotalSeconds,
+        getCalibrateSystemStatusCode(this.calibrateType)
+      );
 
       try {
         const result = this.measure.Measure();
@@ -389,8 +424,11 @@ export class CalibrateFlow extends Flow {
         calibrateTime: DateTimeUtil.getTimestamp() - this.calibrateDateTime,              // 校准时长
         measureRange: config.system.rangeViewMap[this.currentRange].view,               // 量程 (v2新增)
       };
+      this.lastCalibrateRecord = record;
 
-      DatabaseManager.getInstance().addCalibrateRecord(record);
+      console.info(`CalibrateFlow ${JSON.stringify(record)}`);
+
+      // DatabaseManager.getInstance().addCalibrateRecord(record);
 
       hilog.debug(122, 'CalibrateFlow', '保存量程 %{public}d, 校准结果，K：%{public}d B：%{public}d',
         this.currentRange, curveK, curveB);
@@ -461,6 +499,13 @@ export class CalibrateFlow extends Flow {
     let absorbance: number;
 
     hilog.debug(122, 'CalibrateFlow', '第1次校准测量吸光度 Absorbance = %{public}d', tempAbsorbance1);
+
+    // 精确校准仍属于当前校准流程，重新设置状态覆盖
+    this.measure.setStatusOverride(
+      this.currentStatusLabel,
+      this.currentStatusTotalSeconds,
+      getCalibrateSystemStatusCode(this.calibrateType)
+    );
 
     try {
       const result = this.measure.Measure();
@@ -539,6 +584,38 @@ export class CalibrateFlow extends Flow {
 
       hilog.debug(122, 'CalibrateFlow', '初次使用仪器，进行深度清洗');
       // TODO
+  }
+
+  /**
+   * 根据当前校准类型更新状态覆盖信息。
+   * 用于让底部进度条显示"校准"/"零点校准"/"量程校准"/"一键校准"，
+   * 而不是 Measurer 默认映射出的"测量零点/量程校准液"。
+   */
+  private updateStatusOverride(): void {
+    switch (this.calibrateType) {
+      case CalibrateType.oneKeyMaintain:
+        this.currentStatusLabel = setting.runStatus.oneKeyMaintain.text;
+        this.currentStatusTotalSeconds = setting.runStatus.oneKeyMaintain.GetTime?.() ?? 0;
+        break;
+      case CalibrateType.onlyCalibrateBlank:
+        this.currentStatusLabel = setting.runStatus.onlyCalibrateBlank.text;
+        this.currentStatusTotalSeconds = setting.runStatus.onlyCalibrateBlank.GetTime?.() ?? 0;
+        break;
+      case CalibrateType.onlyCalibrateStandard:
+        this.currentStatusLabel = setting.runStatus.onlyCalibrateStandard.text;
+        this.currentStatusTotalSeconds = setting.runStatus.onlyCalibrateStandard.GetTime?.() ?? 0;
+        break;
+      case CalibrateType.calibrate:
+      default:
+        this.currentStatusLabel = setting.runStatus.calibrate.text;
+        this.currentStatusTotalSeconds = setting.runStatus.calibrate.GetTime?.() ?? 0;
+        break;
+    }
+    this.measure.setStatusOverride(
+      this.currentStatusLabel,
+      this.currentStatusTotalSeconds,
+      getCalibrateSystemStatusCode(this.calibrateType)
+    );
   }
 
   CalculateReviseParam(absorbance: number): number {

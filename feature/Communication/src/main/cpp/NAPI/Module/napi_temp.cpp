@@ -458,36 +458,71 @@ static napi_value NapiExpectThermostat(napi_env env, napi_callback_info info) {
     }
 
     ThermostatResult result = {0, 0, 0}; // 默认错误
-
+    try
     {
-        std::lock_guard<std::mutex> lock(g_mutex);
+//        std::lock_guard<std::mutex> lock(g_mutex);//等待事件过程中解锁,允许停止指令下发,否则停止指令无效
         if (g_controller != nullptr && g_controller->IPeristalticPump != nullptr) {
             result = g_controller->ITemperatureControl->ExpectThermostat(static_cast<long>(timeout));
         }
+         // 创建 JS 对象：{ index: ..., result: ... }
+        napi_value jsObj;
+        napi_create_object(env, &jsObj);
+        
+        // 设置 result (int → int32)
+        napi_value jsResult;
+        napi_create_int32(env, result.result, &jsResult);
+        napi_set_named_property(env, jsObj, "result", jsResult);
+        
+        // 设置 temp (float → int32)
+        napi_value jsTemp;
+        napi_create_double(env, result.temp, &jsTemp);
+        napi_set_named_property(env, jsObj, "temp", jsTemp);
+    
+        // 设置 index (uint8_t → uint32)
+        napi_value jsIndex;
+        napi_create_uint32(env, static_cast<uint32_t>(result.index), &jsIndex);
+        napi_set_named_property(env, jsObj, "index", jsIndex);
+    
+        return jsObj;
+    } catch (Communication::ExpectEventTimeoutException e) {
+
+        char hexBuf[5]; // 4位十六进制 + '\0'
+        snprintf(hexBuf, sizeof(hexBuf), "%04X", static_cast<unsigned int>(e.m_code));
+
+        std::string msg = "Expect timeout: addr=" + e.m_addr.ToString() 
+                    + ", code=0x" + hexBuf;
+        // 1. 创建 JS Error 的消息字符串
+        napi_value jsMsg;
+        napi_create_string_utf8(env, msg.c_str(), msg.length(), &jsMsg);
+        
+        // 2. 创建 JS Error 对象（第二个参数传 nullptr，稍后手动挂载标准 code）
+        napi_value jsError;
+        napi_create_error(env, nullptr, jsMsg, &jsError);
+        
+        // 3. 新增：挂载标准 Node-API 语义化错误码（供 JS 层 err.code 匹配）
+        napi_value jsCodeStr;
+        napi_create_string_utf8(env, "EXPECT_TIMEOUT", NAPI_AUTO_LENGTH, &jsCodeStr);
+        napi_set_named_property(env, jsError, "code", jsCodeStr);
+        
+        // 4. 保留原有的自定义业务数字错误码
+        napi_value jsErrorCode;
+        napi_create_int32(env, e.m_code, &jsErrorCode);
+        napi_set_named_property(env, jsError, "errorCode", jsErrorCode);
+        
+        // 5. 抛出异常并返回 nullptr
+        napi_throw(env, jsError);
+        return nullptr;
+    } catch (const std::exception& e) {
+        // 标准库异常
+        napi_throw_error(env, "NATIVE_STD_ERROR", e.what());
+        return nullptr;
+
+    } catch (...) {
+        // 未知异常兜底
+        napi_throw_error(env, "NATIVE_UNKNOWN_ERROR", 
+            "Unknown native exception in Expect");
+        return nullptr;
     }
-
-    // 创建 JS 对象：{ index: ..., result: ... }
-    napi_value jsObj;
-    napi_create_object(env, &jsObj);
-    
-    // 设置 result (int → int32)
-    napi_value jsResult;
-    napi_create_int32(env, result.result, &jsResult);
-    napi_set_named_property(env, jsObj, "result", jsResult);
-    
-    // 设置 temp (float → int32)
-    napi_value jsTemp;
-    napi_create_double(env, result.temp, &jsTemp);
-    napi_set_named_property(env, jsObj, "temp", jsTemp);
-
-    // 设置 index (uint8_t → uint32)
-    napi_value jsIndex;
-    napi_create_uint32(env, static_cast<uint32_t>(result.index), &jsIndex);
-    napi_set_named_property(env, jsObj, "index", jsIndex);
-
-    
-
-    return jsObj;
 }
 
 static napi_value NapiBoxFanSetOutput(napi_env env, napi_callback_info info) {

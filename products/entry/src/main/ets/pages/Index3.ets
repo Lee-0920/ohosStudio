@@ -1,7 +1,9 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { window } from '@kit.ArkUI';
+import { window, componentSnapshot, promptAction } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
-import { TopMenuBar } from '../components/TopMenuBar';
+import { image } from '@kit.ImageKit';
+import { fileIo } from '@kit.CoreFileKit';
+import { TopMenuBar, UserMenuAction } from '../components/TopMenuBar';
 import { DataPage } from './DataPage';
 import { HomePage } from './HomePage';
 import { OperationPage } from './OperationPage';
@@ -140,6 +142,62 @@ struct Index {
     this.currentRole = 'normal';
     this.loginPassword = '';
     this.loginMessage = '请选择账户并输入密码';
+  }
+
+  private handleUserMenuAction(action: UserMenuAction): void {
+    switch (action) {
+      case 'switch':
+        this.handleMenuClick('user');
+        break;
+      case 'logout':
+        this.handleLogout();
+        break;
+      case 'screenshot':
+        void this.handleScreenshot();
+        break;
+      default:
+        break;
+    }
+  }
+
+  private async handleScreenshot(): Promise<void> {
+    const context = this.getHostContext();
+    if (!context) {
+      promptAction.showToast({ message: '无法获取应用上下文' });
+      return;
+    }
+
+    try {
+      const pixelMap: image.PixelMap = await componentSnapshot.get('indexRoot');
+      const imagePacker = image.createImagePacker();
+      const packOpts: image.PackingOption = { format: 'image/png', quality: 100 };
+      const buffer: ArrayBuffer = await imagePacker.packing(pixelMap, packOpts);
+
+      const uiAbilityContext = context as common.UIAbilityContext;
+      const screenshotDir = uiAbilityContext.filesDir + '/screenshots';
+      if (!fileIo.accessSync(screenshotDir)) {
+        fileIo.mkdirSync(screenshotDir);
+      }
+
+      const fileName = `screenshot_${this.formatScreenshotTime()}_${Date.now()}.png`;
+      const filePath = screenshotDir + '/' + fileName;
+      const file = fileIo.openSync(filePath,
+        fileIo.OpenMode.CREATE | fileIo.OpenMode.READ_WRITE);
+      fileIo.writeSync(file.fd, buffer);
+      fileIo.closeSync(file.fd);
+
+      promptAction.showToast({ message: `截图已保存：${filePath}`, duration: 2000 });
+    } catch (err) {
+      hilog.error(DOMAIN, TAG, 'screenshot failed: %{public}s', JSON.stringify(err));
+      promptAction.showToast({ message: '截图失败，请重试' });
+    }
+  }
+
+  private formatScreenshotTime(): string {
+    const now = new Date();
+    const pad = (value: number): string => value < 10 ? '0' + value : '' + value;
+    return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_` +
+      `${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
   }
 
   private async handleLogin(): Promise<void> {
@@ -471,6 +529,9 @@ struct Index {
           scaleFactor: this.scaleFactor,
           onMenuClick: (menuId: string) => {
             this.handleMenuClick(menuId);
+          },
+          onUserMenuAction: (action: UserMenuAction) => {
+            this.handleUserMenuAction(action);
           }
         });
         this.pageContent();
@@ -519,5 +580,6 @@ struct Index {
       }
     })
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+    .id('indexRoot')
   }
 }

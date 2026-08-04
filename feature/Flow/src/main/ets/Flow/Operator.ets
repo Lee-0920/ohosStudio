@@ -5,7 +5,7 @@ import { setting } from '../Setting/Setting';
 import { PeristalticPump } from './PeristalticPump';
 import { thread } from 'base';
 import { config } from '../Config/Config';
-import { dncp, pump, valve, temp, meter, optical } from 'communication'; //导入模块
+import { pump, valve, temp, meter, optical } from 'communication'; //导入模块
 import type { Meter, Valve, Pump, Temp, Optical } from 'communication'; // 或分别从各文件 import type
 import {
   type MotionParam, type PumpResult,            //泵接口结构体导入
@@ -21,7 +21,15 @@ import {
 } from 'communication'; //导入类型->结构体，枚举(结构体前必须加type，枚举体不需要加type)
 
 import { ReagentRemainManager } from '../Common/ReagentRemainManager';
-import { collections } from "@kit.ArkTS";
+import { collections, JSON } from "@kit.ArkTS";
+
+/**
+ * 公共接口
+ */
+interface NativeError extends Error {
+  code?: string;      // C++ 新增的标准错误标识
+  errorCode?: number; // C++ 原有的业务数字码
+}
 
 /**
  * 废液排放类型
@@ -58,15 +66,11 @@ export class Operator {
     this.IPeristalticPump = pump;
     this.ITemperatureControl = temp;
     this.IOpticalAcquire = optical;
-    //
-    // dncp.createPlugin();
-    // dncp.addSlaveNode(1);
-    // dncp.initDncpStack("/dev/ttyS0",false,"");
 
     // 初始化蠕动泵列表
-    // for (let i = 0; i < pumpCount; i++) {
-    //   this.pumps.push(new PeristalticPump(i, this.IPeristalticPump));
-    // }
+    for (let i = 0; i < 1; i++) {
+      this.pumps.push(new PeristalticPump(i, this.IPeristalticPump));
+    }
   }
 
   static getInstance(): Operator {
@@ -80,9 +84,6 @@ export class Operator {
 
   private init() {
     // 实际的初始化工作
-    // dncp.createPlugin();
-    // dncp.addSlaveNode(1);
-    // dncp.initDncpStack("/dev/ttyS0",false,"");
   }
 
   /**
@@ -99,18 +100,17 @@ export class Operator {
     this.IOpticalMeter.stopMeter();
     this.isStop = true;
 
-    if (this.isMetering) {
+    if (this.IOpticalMeter.getMeterStatus() == 2) {
       this.IOpticalMeter.stopMeter();
       this.isMetering = false;
     }
-
     for (const pump of this.pumps) {
-      if (pump.isRunning) {
+      if(pump.GetStatus() == PumpStatus.Busy)
+      {
         pump.Stop();
       }
     }
-
-    if (this.isThermostat) {
+    if (this.ITemperatureControl.getThermostatStatus() == 2) {
       this.ITemperatureControl.stopThermostat();
       this.isThermostat = false;
     }
@@ -136,37 +136,65 @@ export class Operator {
 
     try {
       const map = new ValveMap(source.valve);
+      const pump = this.pumps[source.pump];
 
-      const result = this.IPeristalticPump.startPump(source.pump, RollDirection.Suck, volume, speed);
-      // if (!result) {
-      //   return false;
-      // }
-
-      if (isWait) {
-        thread.sleep(1500);
-      }
-
-      const valveResult = this.ISolenoidValve.setValveMap(map);
-      if (!valveResult) {
-        this.IPeristalticPump.stopPump(source.pump);
+      if (pump.isRunning) {
+        hilog.warn(122, 'Operator', 'Pump is busy, reject new start command');
         return false;
       }
 
-      const pumpResult = this.IPeristalticPump.expectPumpResult(timeout);
+      const result = pump.Start(RollDirection.Suck, volume, speed);
+      //判断结果时附带判断泵状态，避免因指令重发结果失败而导致后续泵事件混乱
+      if (!result &&  pump.GetStatus() === PumpStatus.Idle) {
+        hilog.error(122, 'Operator', ' Pump Start Error');
+        return false;
+      }
+
+      // if (isWait) {
+      //   thread.sleep(1500);
+      // }
+
+      const valveResult = this.ISolenoidValve.setValveMap(map);
+      if (!valveResult) {
+        pump.Stop();
+        return false;
+      }
+
+      const pumpResult = pump.ExpectResult(timeout);
       map.setData(0);
       this.ISolenoidValve.setValveMap(map);
 
       if (pumpResult.result == PumpOperateResult.Finished) {
         ret = true;
+      } else if(pumpResult.result == PumpOperateResult.Stopped) {
+        throw new Error('PumpStoppedException');
       }
 
       ret = true;
-    } catch (err) {
-      // 异常处理
-      if (err instanceof Error) {
-        hilog.warn(122, 'Operator', 'Pump error: %{public}s', err.message);
+    } catch (error) {
+      // 2. 非 Error 对象安全处理（不要访问 .message）
+      if (!(error instanceof Error)) {
+        hilog.error(122, 'Operator', 'Undefined Drain error: %{public}s', String(error));
+        throw new Error(error);
       }
-      throw new Error(err);
+
+      // 3. 常规日志记录
+      hilog.warn(122, 'Operator', 'Pump error: %{public}s', error.message);
+
+      // 4. 类型断言（符合 ArkTS 规范，无交叉类型）
+      const err = error as NativeError;
+
+      // 5. 优先使用语义化 code 进行精确匹配
+      if (err.code === 'EXPECT_TIMEOUT') {
+        // 可同时利用 errorCode 做格式化展示
+        const hexCode = err.errorCode !== undefined
+          ? `0x${err.errorCode.toString(16)}`
+          : 'unknown';
+        console.warn(`[通信异常]-事件超时 (${hexCode}): ${err.message}`);
+      }
+
+      // 6. 直接透传原始对象，保留完整堆栈与所有属性
+      throw err;
     }
 
     ReagentRemainManager.getInstance().ReduceReagent(source, volume);
@@ -186,42 +214,63 @@ export class Operator {
     this.debugPrintf("{Drain} dest = %{public}s, volume = %{public}d, speed = %{public}d", dest.name, volume, speed);
 
     try {
-      // console.info(`TLQQ, before new`); // 现在应该能看到 ETS 构造函数里的日志了
       const map = new ValveMap(dest.valve);
-      // console.info(`TLQQ, after new`); // 现在应该能看到 ETS 构造函数里的日志了
+      const pump = this.pumps[dest.pump];
+
+      if (pump.isRunning) {
+        hilog.warn(122, 'Operator', 'Drain is busy, reject new start command');
+        return false;
+      }
 
       const valveResult = this.ISolenoidValve.setValveMap(map);
       if (!valveResult) {
         return false;
       }
-      // console.info(`TLQQ, after setValveMap`); // 现在应该能看到 ETS 构造函数里的日志了
       // thread.sleep(3000);
 
-      const Result = this.IPeristalticPump.startPump(dest.pump, RollDirection.Drain, volume, speed);
-      // console.info(`TLQQ, after startPump`); // 现在应该能看到 ETS 构造函数里的日志了
-      // if (!Result) {
-      //   return false;
-      // }
-      // thread.sleep(5000);
-      // console.info(`TLQQ, expectPumpResult start `); // 现在应该能看到 ETS 构造函数里的日志了
-      // let pumpResult: PumpResult = pump.expectPumpResult(3000);
-      const pumpResult = this.IPeristalticPump.expectPumpResult(timeout);
-      // console.info(`TLQQ, expectPumpResult end`); // 现在应该能看到 ETS 构造函数里的日志了
+      const result = pump.Start(RollDirection.Drain, volume, speed);
+      //判断结果时附带判断泵状态，避免因指令重发结果失败而导致后续泵事件混乱
+      if (!result &&  pump.GetStatus() === PumpStatus.Idle) {
+        hilog.error(122, 'Operator', ' Drain Start Error');
+        return false;
+      }
+
+      const pumpResult = pump.ExpectResult(timeout);
       thread.sleep(500);
       map.setData(0);
       this.ISolenoidValve.setValveMap(map);
 
       if (pumpResult.result == PumpOperateResult.Finished) {
-        // console.info(`TLQQ, expectPumpResult Finished`);
         ret = true;
+      } else if(pumpResult.result == PumpOperateResult.Stopped) {
+        throw new Error('PumpStoppedException');
       }
 
       ret = true;
-    } catch (err) {
-      if (err instanceof Error) {
-        hilog.warn(122, 'Operator', 'Drain error: %{public}s', err.message);
+    } catch (error) {
+      // 2. 非 Error 对象安全处理（不要访问 .message）
+      if (!(error instanceof Error)) {
+        hilog.error(122, 'Operator', 'Undefined Drain error: %{public}s', String(error));
+        throw new Error(error);
       }
-      throw new Error(err);
+
+      // 3. 常规日志记录
+      hilog.warn(122, 'Operator', 'Drain error: %{public}s', error.message);
+
+      // 4. 类型断言（符合 ArkTS 规范，无交叉类型）
+      const err = error as NativeError;
+
+      // 5. 优先使用语义化 code 进行精确匹配
+      if (err.code === 'EXPECT_TIMEOUT') {
+        // 可同时利用 errorCode 做格式化展示
+        const hexCode = err.errorCode !== undefined
+          ? `0x${err.errorCode.toString(16)}`
+          : 'unknown';
+        console.warn(`[通信异常]-事件超时 (${hexCode}): ${err.message}`);
+      }
+
+      // 6. 直接透传原始对象，保留完整堆栈与所有属性
+      throw err;
     }
 
     ReagentRemainManager.getInstance().RecoverReagent(dest, volume);
@@ -239,25 +288,47 @@ export class Operator {
 
     try {
       const map = new ValveMap(dest.valve);
+      const pump = this.pumps[dest.pump];
 
-      const Result = this.IPeristalticPump.startPump(dest.pump, RollDirection.Drain, volume, speed);
+      const Result = pump.Start(RollDirection.Drain, volume, speed);
       if (!Result) {
         return false;
       }
 
-      const pumpResult = this.IPeristalticPump.expectPumpResult(timeout);
+      const pumpResult = pump.ExpectResult(timeout);
       map.setData(0);
 
       if (pumpResult.result == PumpOperateResult.Finished) {
         ret = true;
+      } else if(pumpResult.result == PumpOperateResult.Stopped) {
+        throw new Error('PumpStoppedException');
       }
 
       ret = true;
-    } catch (err) {
-      if (err instanceof Error) {
-        hilog.warn(122, 'Operator', 'DrainNotCloseValve error: %{public}s', err.message);
+    } catch (error) {
+      // 2. 非 Error 对象安全处理（不要访问 .message）
+      if (!(error instanceof Error)) {
+        hilog.error(122, 'Operator', 'Undefined Drain error: %{public}s', String(error));
+        throw new Error(error);
       }
-      throw new Error(err);
+
+      // 3. 常规日志记录
+      hilog.warn(122, 'Operator', 'Drain error: %{public}s', error.message);
+
+      // 4. 类型断言（符合 ArkTS 规范，无交叉类型）
+      const err = error as NativeError;
+
+      // 5. 优先使用语义化 code 进行精确匹配
+      if (err.code === 'EXPECT_TIMEOUT') {
+        // 可同时利用 errorCode 做格式化展示
+        const hexCode = err.errorCode !== undefined
+          ? `0x${err.errorCode.toString(16)}`
+          : 'unknown';
+        console.warn(`[通信异常]-事件超时 (${hexCode}): ${err.message}`);
+      }
+
+      // 6. 直接透传原始对象，保留完整堆栈与所有属性
+      throw err;
     }
 
     ReagentRemainManager.getInstance().RecoverReagent(dest, volume);
@@ -353,16 +424,36 @@ export class Operator {
 
       if (expectResult === MeterResult.Finished) {
         ret = true;
+      } else if(expectResult == MeterResult.Stopped) {
+        throw new Error("用户终止");
       }
 
       this.isMetering = false;
       ret = true;
-    } catch (err) {
-      this.isMetering = false;
-      if (err instanceof Error) {
-        hilog.warn(122, 'Operator', 'Meter error: %{public}s', err.message);
+    }  catch (error) {
+      // 2. 非 Error 对象安全处理（不要访问 .message）
+      if (!(error instanceof Error)) {
+        hilog.error(122, 'Operator', 'Undefined Meter error: %{public}s', String(error));
+        throw new Error(error);
       }
-      throw new Error(err);
+
+      // 3. 常规日志记录
+      hilog.warn(122, 'Operator', 'Meter error: %{public}s', error.message);
+
+      // 4. 类型断言（符合 ArkTS 规范，无交叉类型）
+      const err = error as NativeError;
+
+      // 5. 优先使用语义化 code 进行精确匹配
+      if (err.code === 'EXPECT_TIMEOUT') {
+        // 可同时利用 errorCode 做格式化展示
+        const hexCode = err.errorCode !== undefined
+          ? `0x${err.errorCode.toString(16)}`
+          : 'unknown';
+        console.warn(`[通信异常]-事件超时 (${hexCode}): ${err.message}`);
+      }
+
+      // 6. 直接透传原始对象，保留完整堆栈与所有属性
+      throw err;
     }
 
     ReagentRemainManager.getInstance().ReduceReagent(source, volume);
@@ -426,9 +517,9 @@ export class Operator {
   DrainToWaste(volume: number, wasteType: WasteType = WasteType.WasteReagent): void {
     const actualVolume = volume === 0 ? setting.liquid.meterPipeVolume : volume;
     if (wasteType === WasteType.WasteWater) {
-      this.Drain(liquidTypes.wasteWater, actualVolume, 0.2);
+      this.Drain(liquidTypes.wasteWater, actualVolume, 0.5);
     } else {
-      this.Drain(liquidTypes.waste, actualVolume, 0.2);
+      this.Drain(liquidTypes.waste, actualVolume, 0.5);
     }
   }
 
@@ -627,6 +718,11 @@ export class Operator {
         if (err instanceof Error) {
           hilog.warn(122, 'Operator', 'DrainFromDigestionRoomCheck error: %{public}s', err.message);
         }
+        break;
+      }
+      if( meterTimes >= minTimes)
+      {
+        hilog.debug(122, 'Operator', 'DrainFromDigestionRoomCheck over limited: %{public}d', minTimes);
         break;
       }
     }
@@ -1132,26 +1228,53 @@ export class Operator {
   StartThermostat(mode: ThermostatMode, targetTemp: number, tolerance: number, timeout: number): number {
     let temp = 0;
 
-    this.ITemperatureControl.startThermostat(mode, targetTemp, tolerance, timeout);
+    try {
+      this.ITemperatureControl.startThermostat(mode, targetTemp, tolerance, timeout);
 
-    this.debugPrintf("{StartThermostat} mode = %{public}d, targetTemp = %{public}d, tolerance = %{public}d, timeout = %{public}d",
-      mode, targetTemp, tolerance, timeout);
-    this.isThermostat = true;
+      this.debugPrintf("{StartThermostat} mode = %{public}d, targetTemp = %{public}d, tolerance = %{public}d, timeout = %{public}d",
+        mode, targetTemp, tolerance, timeout);
+      this.isThermostat = true;
 
-    const result = this.ITemperatureControl.expectThermostat(timeout * 1000 + 1000);
+      const result = this.ITemperatureControl.expectThermostat(timeout * 1000 + 1000);
 
-    this.debugPrintf("{thermostatResult} result = %{public}d, temp = %{public}d", result.result, result.temp);
+      this.debugPrintf("{thermostatResult} result = %{public}d, temp = %{public}d", result.result, result.temp);
 
-    if (result.result === ThermostatOperateResult.Failed) {
-      this.isThermostat = false;
-    } else if (result.result === ThermostatOperateResult.Stopped) {
-      this.isThermostat = false;
-    } else if (result.result === ThermostatOperateResult.Timeout) {
-      this.isThermostat = false;
-    } else if (result.result === ThermostatOperateResult.Reached) {
-      this.isThermostat = false;
+      if (result.result === ThermostatOperateResult.Failed) {
+        this.isThermostat = false;
+      } else if (result.result === ThermostatOperateResult.Stopped) {
+        this.isThermostat = false;
+        throw new Error("用户终止");
+      } else if (result.result === ThermostatOperateResult.Timeout) {
+        this.isThermostat = false;
+      } else if (result.result === ThermostatOperateResult.Reached) {
+        this.isThermostat = false;
+      }
+      temp = result.temp;
+    }  catch (error) {
+      // 2. 非 Error 对象安全处理（不要访问 .message）
+      if (!(error instanceof Error)) {
+        hilog.error(122, 'Operator', 'Undefined Thermostat error: %{public}s', String(error));
+        throw new Error(error);
+      }
+
+      // 3. 常规日志记录
+      hilog.warn(122, 'Operator', 'Thermostat error: %{public}s', error.message);
+
+      // 4. 类型断言（符合 ArkTS 规范，无交叉类型）
+      const err = error as NativeError;
+
+      // 5. 优先使用语义化 code 进行精确匹配
+      if (err.code === 'EXPECT_TIMEOUT') {
+        // 可同时利用 errorCode 做格式化展示
+        const hexCode = err.errorCode !== undefined
+          ? `0x${err.errorCode.toString(16)}`
+          : 'unknown';
+        console.warn(`[通信异常]-事件超时 (${hexCode}): ${err.message}`);
+      }
+
+      // 6. 直接透传原始对象，保留完整堆栈与所有属性
+      throw err;
     }
-    temp = result.temp;
 
     return temp;
   }
@@ -1212,12 +1335,30 @@ export class Operator {
         this.isAcquiring = false;
 
         AD = temp;
-      } catch (err) {
-        this.isAcquiring = false;
-        if (err instanceof Error) {
-          hilog.warn(122, 'Operator', 'StartAcquirerAD error: %{public}s', err.message);
+      }  catch (error) {
+        // 2. 非 Error 对象安全处理（不要访问 .message）
+        if (!(error instanceof Error)) {
+          hilog.error(122, 'Operator', 'Undefined AcquirerAD error: %{public}s', String(error));
+          throw new Error(error);
         }
-        throw new Error(err);
+
+        // 3. 常规日志记录
+        hilog.warn(122, 'Operator', 'AcquirerAD error: %{public}s', error.message);
+
+        // 4. 类型断言（符合 ArkTS 规范，无交叉类型）
+        const err = error as NativeError;
+
+        // 5. 优先使用语义化 code 进行精确匹配
+        if (err.code === 'EXPECT_TIMEOUT') {
+          // 可同时利用 errorCode 做格式化展示
+          const hexCode = err.errorCode !== undefined
+            ? `0x${err.errorCode.toString(16)}`
+            : 'unknown';
+          console.warn(`[通信异常]-事件超时 (${hexCode}): ${err.message}`);
+        }
+
+        // 6. 直接透传原始对象，保留完整堆栈与所有属性
+        throw err;
       }
     }
     return AD;
@@ -1279,6 +1420,7 @@ export class Operator {
     const volume = 1000000;
     const speed = setting.liquid.pumpAirSpeed * 1.5;
     const map = new ValveMap(dest.valve);
+    const pump = this.pumps[dest.pump];
     const readADCount = 50;
     const absorbance: number[] = [];
 
@@ -1293,7 +1435,7 @@ export class Operator {
         return 0;
       }
 
-      const Result = this.IPeristalticPump.startPump(dest.pump, RollDirection.Drain, volume, speed);
+      const Result = pump.Start(RollDirection.Drain, volume, speed);
       if (!Result) {
         return 0;
       }
@@ -1323,26 +1465,48 @@ export class Operator {
   AutoStaticADControl(index: number, target: number): boolean {
     const timeout = 120 * 1000;
 
-    // const ret =
-    this.IOpticalAcquire.startStaticADControl(index,target);
+    try {
+      this.IOpticalAcquire.startStaticADControl(index, target);
 
-    // if ret === true then
-    //   this.isStaticADControl = true
       this.debugPrintf("Auto static AD control started index = %{public}d target = %{public}d", index, target);
 
       const result = this.IOpticalAcquire.expectStaticADControlResult(timeout);
 
-      if (result === StaticADControlResult.Unfinished){
+      if (result === StaticADControlResult.Unfinished) {
         this.debugPrintf("Auto static AD control Unfinished ");
         return false;
-      } else if (result === StaticADControlResult.Finished){
+      } else if (result === StaticADControlResult.Finished) {
         this.debugPrintf("Auto static AD control Finished ");
         return true;
-      }
-      else {
+      } else {
         this.debugPrintf("Auto static AD control Unknow %{public}%d ", result);
       }
-    // end
+      // end
+    }  catch (error) {
+      // 2. 非 Error 对象安全处理（不要访问 .message）
+      if (!(error instanceof Error)) {
+        hilog.error(122, 'Operator', 'Undefined Drain error: %{public}s', String(error));
+        throw new Error(error);
+      }
+
+      // 3. 常规日志记录
+      hilog.warn(122, 'Operator', 'Drain error: %{public}s', error.message);
+
+      // 4. 类型断言（符合 ArkTS 规范，无交叉类型）
+      const err = error as NativeError;
+
+      // 5. 优先使用语义化 code 进行精确匹配
+      if (err.code === 'EXPECT_TIMEOUT') {
+        // 可同时利用 errorCode 做格式化展示
+        const hexCode = err.errorCode !== undefined
+          ? `0x${err.errorCode.toString(16)}`
+          : 'unknown';
+        console.warn(`[通信异常]-事件超时 (${hexCode}): ${err.message}`);
+      }
+
+      // 6. 直接透传原始对象，保留完整堆栈与所有属性
+      throw err;
+    }
     return false;
   }
 
@@ -1415,6 +1579,7 @@ export class Operator {
     let ret = false;
     const timeout = Math.floor((pressureVol + forcingVol) * setting.liquid.meterLimit.pumpTimeoutFactor);
     const map = new ValveMap(dest.valve);
+    const pump = this.pumps[dest.pump];
     const closeMap = new ValveMap(0);
 
     this.isStop = false;
@@ -1426,8 +1591,9 @@ export class Operator {
     const openValveTime = Math.floor(1000 * (forcingVol / speed));
 
     try {
-      const Result = this.IPeristalticPump.startPump(dest.pump, RollDirection.Drain, (times * (pressureVol + forcingVol) + pipeVol), speed);
-      if (!Result) {
+
+      const result = pump.Start(RollDirection.Drain, (times * (pressureVol + forcingVol) + pipeVol), speed);
+      if (!result) {
         return false;
       }
 

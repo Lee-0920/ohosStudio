@@ -94,9 +94,17 @@ export struct SettingPage {
   private protocolTableNameToModbusProtocolMode(tableName: string): string {
     const map: Record<string, string> = {
       'LS4.0': 'LS4.0',
+      'LS1.0': 'LS1.0',
+      'LS2.0': 'LS2.0',
       'JS': 'JS',
       'SZBA': 'SZBA',
-      '地表水1.0': '地表水1.0'
+      '地表水1.0': '地表水1.0',
+      'SC': 'SC',
+      '西宁动态管控': '西宁动态管控',
+      'GZ': 'GZ',
+      'JX': 'JX',
+      'XiAn': 'XiAn',
+      'YC': 'YC'
     };
     return map[tableName] ?? 'LS4.0';
   }
@@ -106,18 +114,18 @@ export struct SettingPage {
    */
   private modbusProtocolModeToTableName(modeValue: string): string {
     const map: Record<string, string> = {
-      'LS1.0': 'LS4.0',
+      'LS4.0': 'LS4.0',
+      'LS1.0': 'LS1.0',
+      'LS2.0': 'LS2.0',
       'JS': 'JS',
       'SZBA': 'SZBA',
-      '西宁动态管控': 'LS4.0',
-      'GZ': 'LS4.0',
-      'SC': 'LS4.0',
       '地表水1.0': '地表水1.0',
-      'LS2.0': 'LS4.0',
-      'XiAn': 'LS4.0',
-      'JX': 'LS4.0',
-      'YC': 'LS4.0',
-      'LS4.0': 'LS4.0'
+      'SC': 'SC',
+      '西宁动态管控': '西宁动态管控',
+      'GZ': 'GZ',
+      'JX': 'JX',
+      'XiAn': 'XiAn',
+      'YC': 'YC'
     };
     return map[modeValue] ?? 'LS4.0';
   }

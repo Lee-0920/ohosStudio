@@ -14,7 +14,7 @@ import { PipeOperationPanel } from './operation/PipeOperationPanel';
 import { ReagentManagementPanel } from './operation/ReagentManagementPanel';
 import { UpgradePanel } from './operation/UpgradePanel';
 import { WqMaintenanceRow, WqOperationConfigRow } from './operation/OperationTypes';
-import { MaintenceType, MeasureType, CleanType } from 'flow';
+import { MaintenceType, MeasureType, CleanType, CalibrateType } from 'flow';
 
 @Component
 export struct OperationPage {
@@ -25,11 +25,11 @@ export struct OperationPage {
   @State private selectedOperationTab: string = '维护';
   @State private maintenanceRows: WqMaintenanceRow[] = [
     { id: 'sample', project: '测量水样', count: '1', isRunning: false, status: '待执行', result: '', maintenceType: MaintenceType.AutoMeasure, params: MeasureType.Sample},
-    { id: 'calibration', project: '校准', count: '1', isRunning: false, status: '待执行', result: '', maintenceType: MaintenceType.AutoCalibrate},
+    { id: 'calibration', project: '校准', count: '1', isRunning: false, status: '待执行', result: '', maintenceType: MaintenceType.AutoCalibrate, params: CalibrateType.calibrate},
     { id: 'span-check', project: '标样(跨度)核查', count: '1', isRunning: false, status: '待执行', result: '', maintenceType: MaintenceType.AutoMeasure, params: MeasureType.RangeCheck},
     { id: 'zero-check', project: '零点核查', count: '1', isRunning: false, status: '待执行', result: '', maintenceType: MaintenceType.AutoMeasure, params: MeasureType.ZeroCheck},
-    { id: 'range-calibration', project: '量程校准', count: '1', isRunning: false, status: '待执行', result: '', maintenceType: MaintenceType.AutoCalibrate, params: MeasureType.Standard},
-    { id: 'zero-calibration', project: '零点校准', count: '1', isRunning: false, status: '待执行', result: '', maintenceType: MaintenceType.AutoCalibrate, params: MeasureType.Blank},
+    { id: 'range-calibration', project: '量程校准', count: '1', isRunning: false, status: '待执行', result: '', maintenceType: MaintenceType.AutoCalibrate, params: CalibrateType.onlyCalibrateStandard},
+    { id: 'zero-calibration', project: '零点校准', count: '1', isRunning: false, status: '待执行', result: '', maintenceType: MaintenceType.AutoCalibrate, params: CalibrateType.onlyCalibrateBlank},
     { id: 'update-reagent', project: '一键更新试剂', count: '1', isRunning: false, status: '待执行', result: '', maintenceType: MaintenceType.AutoClean, params: CleanType.oneKeyRenew},
     { id: 'quality-control', project: '测质控样', count: '1', isRunning: false, status: '待执行', result: '', maintenceType: MaintenceType.AutoMeasure, params: MeasureType.QualityHandle},
     { id: 'measure-range-calibration-solution', project: '测量程校准液', count: '1', isRunning: false, status: '待执行', result: '', maintenceType: MaintenceType.AutoMeasure, params: MeasureType.Standard},
@@ -93,9 +93,9 @@ export struct OperationPage {
     { id: 'calibration-measure-ad', category: '', name: '测量AD', value: '2048', value2: '2048', value3: '', value4: '', unit: '', status: '', result: '', selected: false, running: false }
   ];
   @State private combinationOperationRows: WqOperationConfigRow[] = [
-    { id: 'combo-operation-zero-to-cell', category: '', name: '吸零点校准液至消解室', value: '1.30', value2: '', value3: '', value4: '', unit: 'mL', status: '', result: '', selected: false, running: false },
-    { id: 'combo-operation-drain-analysis', category: '', name: '排消解液至分析废液', value: '1.70', value2: '', value3: '', value4: '', unit: 'mL', status: '', result: '', selected: false, running: false },
-    { id: 'combo-operation-drain-clean', category: '', name: '排消解液至清洗废水', value: '1.70', value2: '', value3: '', value4: '', unit: 'mL', status: '', result: '', selected: false, running: false }
+    { id: 'combo-operation-zero-to-cell', category: '', name: '吸零点校准液至消解室', value: '1.30', value2: 'blank', value3: 'digestionRoom', value4: '', unit: 'mL', status: '', result: '', selected: false, running: false },
+    { id: 'combo-operation-drain-analysis', category: '', name: '排消解液至分析废液', value: '1.70', value2: 'digestionRoom', value3: 'waste', value4: '', unit: 'mL', status: '', result: '', selected: false, running: false },
+    { id: 'combo-operation-drain-clean', category: '', name: '排消解液至清洗废水', value: '1.70', value2: 'digestionRoom', value3: 'wasteWater', value4: '', unit: 'mL', status: '', result: '', selected: false, running: false }
   ];
   @State private combinationOperationMessage: string = '';
   @State private upgradeRows: WqOperationConfigRow[] = [
@@ -109,7 +109,7 @@ export struct OperationPage {
   ];
   @State private communicationRows: WqOperationConfigRow[] = [
     { id: 'communication-drive-board', category: '板卡通信', name: '驱动板', value: '', value2: '', value3: '', value4: '', unit: '', status: '', result: '', selected: true, running: false },
-    { id: 'communication-adapter-board', category: '', name: '转接板', value: '', value2: '', value3: '', value4: '', unit: '', status: '', result: '', selected: false, running: false }
+    // { id: 'communication-adapter-board', category: '', name: '转接板', value: '', value2: '', value3: '', value4: '', unit: '', status: '', result: '', selected: false, running: false }
   ];
   @State private diagnoseRows: WqOperationConfigRow[] = [
     { id: 'diagnose-zero-valve', category: '', name: '零点校准液阀', value: '', value2: '', value3: '', value4: '', unit: '', status: '', result: '', selected: false, running: false },

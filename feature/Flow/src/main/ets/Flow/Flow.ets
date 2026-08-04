@@ -43,6 +43,14 @@ export class Flow {
     }
   }
 
+  /**
+   * 检查当前 Worker 任务是否已被取消（用户点击停止）。
+   * 非测量流程的操作方法应在关键步骤间调用此函数，以支持及时响应停止指令。
+   */
+  IsCancelled(): boolean {
+    return taskpool.Task.isCanceled();
+  }
+
   GetRuntime(): number {
     return 0;
   }

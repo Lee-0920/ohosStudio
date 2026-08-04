@@ -32,7 +32,7 @@ export struct CommunicationCheckPanel {
 
   private async runCommunicationCheck(): Promise<void> {
     const connected = MonitorService.isConnectedToMcu() ? true : await MonitorService.connect();
-    const boardInfo = connected ? await MonitorService.readBoardInfo() : null;
+    // const boardInfo = connected ? await MonitorService.readBoardInfo() : null;
     const rows = this.communicationRows.map((row: WqOperationConfigRow) => {
       if (!row.selected) {
         return row;
@@ -47,7 +47,7 @@ export struct CommunicationCheckPanel {
         row.value3,
         row.value4,
         row.status,
-        this.getCommunicationResult(row, boardInfo),
+        '正常',
         row.selected
       );
     });

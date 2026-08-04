@@ -517,7 +517,7 @@ export async function drainAfterMeasure(): Promise<number> {
   //setting.measure.range[1].sampleVolume 未实现
   const reactTotalVol = 1 + setting.liquid.reagent1Volume + setting.liquid.reagent2Volume;
   const minTimes = op.GetMinDrainDigestionTimes(reactTotalVol);
-  op.PumpFromDigestionRoom(4, 0, WasteType.WasteReagent);
+  op.PumpFromDigestionRoom(4, 1, WasteType.WasteReagent);
   op.Pump(liquidTypes.digestionRoom, 2.2, 0.2, false);
   op.DrainToWaste(2.5, WasteType.WasteReagent);
 

@@ -4,6 +4,17 @@ import { DateTimeUtil } from 'base';
 import { BaseController } from 'controllerplugin';
 import { PT65DriveController } from "pt65drivecontrollerplugin";
 import { liquidTypes, LiquidType } from '../Setting/LiquidType';
+import { Operator, WasteType } from './Operator';
+import { setting } from '../Setting/Setting';
+import { config } from '../Config/Config';
+import { ActionItem } from '../Setting/RunAction';
+import { MeterMode, RollDirection } from 'communication';
+import { emitter } from '@kit.BasicServicesKit';
+import { WorkerMeasureStatusEvent } from './Measurer';
+import { MeasureType } from './MeasureFlow';
+
+/** Modbus 系统状态码：管路操作 */
+const PIPE_OPERATION_STATUS = 12;
 
 export enum LiquidOperateType {
   SuckFromSample,
@@ -24,6 +35,7 @@ export enum LiquidOperateType {
   DrainToReagent2,
   DrainToReagent3,
 }
+
 
 export class LiquidOperateFlow extends Flow {
   source: LiquidType = liquidTypes.none;
@@ -59,7 +71,7 @@ export class LiquidOperateFlow extends Flow {
     }
 
     // 检测消解室是否为安全温度
-    // op:CheckDigestSafety()
+    // op.CheckDigestSafety()
   }
 
   OnProcess(): void {
@@ -68,6 +80,7 @@ export class LiquidOperateFlow extends Flow {
     this.isUserStop = false;
     this.isFinish = false;
     this.dateTime = DateTimeUtil.getTimestamp();
+    const op = Operator.getInstance();
 
     try {
       // 设置运行状态
@@ -78,59 +91,60 @@ export class LiquidOperateFlow extends Flow {
       // let runAction = Helper.Status.SetAction(this.action);
       // StatusManager.Instance().SetAction(runAction);
 
+      this.emitPipeOperationProgress('start', this.action);
+
       if (this.source != liquidTypes.none) {
-        const DC = new PT65DriveController();
-        // const factor = DC.GetIPeristalticPump().GetPumpFactor(0);
+        const factor = op.IPeristalticPump.getPumpFactor(0);
 
         if (this.source == liquidTypes.reagent2) {
-          // DC.GetIOpticalMeter().SetMeteSpeed(setting.liquid.slowMeterSpeed * factor);
+          op.IOpticalMeter.setMeteSpeed(setting.liquid.slowMeterSpeed * factor);
         } else {
-          // DC.GetIOpticalMeter().SetMeteSpeed(setting.liquid.meterSpeed * factor);
+          op.IOpticalMeter.setMeteSpeed(setting.liquid.meterSpeed * factor);
         }
 
         switch (this.mode) {
           case 0:
-            // op:Pump(this.source, this.sVolume, 0.2);
+            op.Pump(this.source, this.sVolume, 0.2);
             break;
           case 1:
-            // op:SetMeterOverValue(MeterMode.Smart, 0);
-            // op:Meter(MeterMode.Smart, this.source, this.sVolume, RollDirection.Suck);
+            op.SetMeterOverValue(MeterMode.Smart, 0);
+            op.Meter(MeterMode.Smart, this.source, this.sVolume, RollDirection.Suck);
             break;
           case 2:
-            // op:SetMeterOverValue(MeterMode.Accurate, setting.liquid.accurateMeterOverValue);
+            op.SetMeterOverValue(MeterMode.Accurate, setting.liquid.accurateMeterOverValue);
             // 根据定量点选择LED检测方向
-            // if (this.sVolume == config.hardwareConfig.meterPoint.point[1].setVolume) {
-            //   DC.GetIOpticalMeter().TurnOnLED(1);
-            //   App.Sleep(200);
-            //   const meterLed1AD = DC.GetIOpticalMeter().GetSingleOpticalAD(1);
-            //   DC.GetIOpticalMeter().TurnOffLED(1);
-            //   App.Sleep(200);
-            //   if (meterLed1AD > 1000) {
-            //     op:Meter(MeterMode.Accurate, this.source, this.sVolume, RollDirection.Suck);
-            //   } else {
-            //     op:Meter(MeterMode.Accurate, this.source, this.sVolume, RollDirection.Drain);
-            //   }
-            // } else {
-            //   DC.GetIOpticalMeter().TurnOnLED(2);
-            //   App.Sleep(200);
-            //   const meterLed2AD = DC.GetIOpticalMeter().GetSingleOpticalAD(2);
-            //   DC.GetIOpticalMeter().TurnOffLED(2);
-            //   App.Sleep(200);
-            //   if (meterLed2AD > 1000) {
-            //     op:Meter(MeterMode.Accurate, this.source, this.sVolume, RollDirection.Suck);
-            //   } else {
-            //     op:Meter(MeterMode.Accurate, this.source, this.sVolume, RollDirection.Drain);
-            //   }
-            // }
+            if (this.sVolume == config.hardware.meterPoint.point[1].setVolume) {
+              op.IOpticalMeter.turnOnLED(1);
+              this.Wait(1);
+              const meterLed1AD = op.IOpticalMeter.getSingleOpticalAD(1);
+              op.IOpticalMeter.turnOffLED(1);
+              this.Wait(1);
+              if (meterLed1AD > 1000) {
+                op.Meter(MeterMode.Accurate, this.source, this.sVolume, RollDirection.Suck);
+              } else {
+                op.Meter(MeterMode.Accurate, this.source, this.sVolume, RollDirection.Drain);
+              }
+            } else {
+              op.IOpticalMeter.turnOnLED(2);
+              this.Wait(1);
+              const meterLed2AD = op.IOpticalMeter.getSingleOpticalAD(2);
+              op.IOpticalMeter.turnOffLED(2);
+              this.Wait(1);
+              if (meterLed2AD > 1000) {
+                op.Meter(MeterMode.Accurate, this.source, this.sVolume, RollDirection.Suck);
+              } else {
+                op.Meter(MeterMode.Accurate, this.source, this.sVolume, RollDirection.Drain);
+              }
+            }
             break;
           default:
-            // op:Pump(this.source, this.sVolume, 0.2);
+            op.Pump(this.source, this.sVolume, 0.2);
             break;
         }
       }
 
       if (this.dest != liquidTypes.none) {
-        // op:Drain(this.dest, this.dVolume, 0.2);
+        op.Drain(this.dest, this.dVolume, 0.2);
       }
 
     } catch (err) {
@@ -138,6 +152,7 @@ export class LiquidOperateFlow extends Flow {
         if (err.message.includes("PumpStoppedException") ||
             err.message.includes("MeterStoppedException")) {
           this.isUserStop = true;
+          this.emitPipeOperationProgress('end');
         }
         throw err;
       }
@@ -145,6 +160,7 @@ export class LiquidOperateFlow extends Flow {
 
     this.isFinish = true;
     hilog.info(122, 'LiquidOperateFlow', 'OnProcess End');
+    this.emitPipeOperationProgress('end');
   }
 
   OnStop(): void {
@@ -173,5 +189,37 @@ export class LiquidOperateFlow extends Flow {
       hilog.info(122, 'LiquidOperateFlow', '管路操作结束');
       hilog.info(122, 'LiquidOperateFlow', '管路操作流程总时间 = %{public}ds', DateTimeUtil.getTimestamp() - this.dateTime);
     }
+  }
+
+  /**
+   * 向主线程发送测量进度事件。
+   * 事件通过 emitter 进程级事件总线发送，包含当前状态和当前动作的完整信息。
+   */
+  private emitPipeOperationProgress(phase: 'start' | 'action' | 'end', action?: string): void {
+    const statusInfo: string = setting.runStatus.liquidOperate.text;
+    const payload: WorkerMeasureStatusEvent = {
+      type: 'measureProgress',
+      phase: phase,
+      statusLabel: statusInfo,
+      statusTotalSeconds: 0,
+      actionLabel: action ?? '空闲',
+      actionTotalSeconds: 0,
+      measureType: MeasureType.Sample, // 非测量流程占位，实际以 systemStatusCode 为准
+      timestamp: DateTimeUtil.getTimestamp(),
+      systemStatusCode: PIPE_OPERATION_STATUS
+    };
+    const eventData: emitter.EventData = {
+      data: payload
+    };
+    emitter.emit("MeasureStatus", eventData);
+    hilog.info(
+      100,
+      'LiquidOperateFlow',
+      'emit progress phase=%{public}s status=%{public}s action=%{public}s actionTime=%{public}d',
+      phase,
+      statusInfo,
+      action ?? '空闲',
+      0
+    );
   }
 }

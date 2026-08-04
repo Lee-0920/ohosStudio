@@ -86,6 +86,8 @@ export declare class DataStore {
   getRegisterInfo(address: number): RegisterInfo | undefined;
   setFloat32(address: number, value: number): void;
   getFloat32(address: number): number;
+  setUInt16(address: number, value: number): void;
+  getUInt16(address: number): number;
 }
 
 // ==================== 常量 ====================
@@ -93,31 +95,89 @@ export declare const REG_ADDR: RegAddrMap;
 export declare const REGISTERS: Map<number, RegisterInfo>;
 
 // ==================== 协议表抽象 ====================
-export declare type ModbusProtocolType = 'LS4.0' | 'JS' | 'SZBA' | '地表水1.0';
+export declare type ModbusProtocolType =
+  | 'LS4.0'
+  | 'LS1.0'
+  | 'LS2.0'
+  | 'JS'
+  | 'SZBA'
+  | '地表水1.0'
+  | 'SC'
+  | '西宁动态管控'
+  | 'GZ'
+  | 'JX'
+  | 'XiAn'
+  | 'YC';
 
 export interface ProtocolTable {
   readonly name: ModbusProtocolType;
-  getRegisterInfo(address: number): RegisterInfo | undefined;
-  toInternalAddress(externalAddress: number): number;
-  toExternalAddress(internalAddress: number): number;
+  getRegisterInfo(externalAddress: number, functionCode?: number): RegisterInfo | undefined;
+  toInternalAddress(externalAddress: number, functionCode?: number): number;
+  toExternalAddress(internalAddress: number, functionCode?: number): number;
 }
 
 export declare class Ls40ProtocolTable implements ProtocolTable {
   readonly name: ModbusProtocolType;
-  getRegisterInfo(address: number): RegisterInfo | undefined;
-  toInternalAddress(externalAddress: number): number;
-  toExternalAddress(internalAddress: number): number;
+  getRegisterInfo(externalAddress: number, functionCode?: number): RegisterInfo | undefined;
+  toInternalAddress(externalAddress: number, functionCode?: number): number;
+  toExternalAddress(internalAddress: number, functionCode?: number): number;
 }
 
-export declare class JsProtocolTable extends Ls40ProtocolTable {
+export declare class OffsetProtocolTable implements ProtocolTable {
   readonly name: ModbusProtocolType;
+  constructor(name: ModbusProtocolType, inputBase: number, holdingBase: number);
+  getRegisterInfo(externalAddress: number, functionCode?: number): RegisterInfo | undefined;
+  toInternalAddress(externalAddress: number, functionCode?: number): number;
+  toExternalAddress(internalAddress: number, functionCode?: number): number;
+}
+
+export declare class Ls10ProtocolTable extends OffsetProtocolTable {
+  readonly name: ModbusProtocolType;
+  constructor();
+}
+
+export declare class Ls20ProtocolTable extends Ls40ProtocolTable {
+  readonly name: ModbusProtocolType;
+}
+
+export declare class JsProtocolTable extends OffsetProtocolTable {
+  readonly name: ModbusProtocolType;
+  constructor();
 }
 
 export declare class SzbaProtocolTable extends Ls40ProtocolTable {
   readonly name: ModbusProtocolType;
 }
 
-export declare class SurfaceWaterProtocolTable extends Ls40ProtocolTable {
+export declare class SurfaceWaterProtocolTable extends OffsetProtocolTable {
+  readonly name: ModbusProtocolType;
+  constructor();
+}
+
+export declare class ScProtocolTable extends Ls40ProtocolTable {
+  readonly name: ModbusProtocolType;
+}
+
+export declare class XnProtocolTable extends Ls40ProtocolTable {
+  readonly name: ModbusProtocolType;
+}
+
+export declare class GzProtocolTable extends OffsetProtocolTable {
+  readonly name: ModbusProtocolType;
+  constructor();
+}
+
+export declare class JxProtocolTable extends OffsetProtocolTable {
+  readonly name: ModbusProtocolType;
+  constructor();
+}
+
+export declare class XianProtocolTable extends OffsetProtocolTable {
+  readonly name: ModbusProtocolType;
+  constructor();
+}
+
+export declare class YcProtocolTable extends Ls40ProtocolTable {
   readonly name: ModbusProtocolType;
 }
 
@@ -333,6 +393,21 @@ export enum SystemStatus {
   SMART_DIAGNOSIS = 13,
   COMMUNICATION_TEST = 14,
   HARDWARE_TEST = 15,
+  MASTER_UPDATE = 16,
+  LIQUID_BOARD_UPDATE = 17,
+  TEMP_CTRL_UPDATE = 18,
+  SIGNAL_BOARD_UPDATE = 19,
+  REACTION_BOARD_UPDATE = 20,
+  DRIVE_BOARD_UPDATE = 21,
+  DEEP_CLEANING = 22,
+  COMBINE_OPERATION = 28,
+  ZERO_CALIBRATE = 29,
+  RANGE_CALIBRATE = 30,
+  QUALITY_CONTROL = 33,
+  CHECK_SOLUTION = 41,
+  METER_AD_ADJUST = 44,
+  MEASURE_AD_ADJUST = 45,
+  ONE_KEY_RENEW = 46,
   FAULT = 255
 }
 
@@ -357,7 +432,25 @@ export enum CurrentAction {
   COOLING = 17,
   COLLECTING = 18,
   STANDING = 19,
-  CALIBRATING = 20
+  CALIBRATING = 20,
+  FILL_BLANK = 21,
+  DRAIN_BLANK = 22,
+  FILL_SAMPLE = 23,
+  DRAIN_SAMPLE = 24,
+  FILL_STANDARD = 25,
+  DRAIN_STANDARD = 26,
+  FILL_REAGENT_1 = 27,
+  DRAIN_REAGENT_1 = 28,
+  FILL_REAGENT_2 = 29,
+  DRAIN_REAGENT_2 = 30,
+  FILL_REAGENT_3 = 31,
+  DRAIN_REAGENT_3 = 32,
+  FILL_REAGENT_4 = 33,
+  DRAIN_REAGENT_4 = 34,
+  FILL_REAGENT_5 = 35,
+  DRAIN_REAGENT_5 = 36,
+  FILL_REAGENT_6 = 37,
+  DRAIN_REAGENT_6 = 38
 }
 
 export enum MeasureControl {
@@ -376,6 +469,14 @@ export enum MeasureControl {
   RANGE_CALIBRATE = 14,
   ZERO_CHECK = 20,
   MEASURE_SPAN_CHECK = 21
+}
+
+export declare const MODBUS_CONTROL_COMMAND_EVENT: string;
+
+export interface ModbusControlCommandEventData {
+  commandId: string;
+  sourceAddress: number;
+  value: number;
 }
 
 export enum DiagnosticResult {

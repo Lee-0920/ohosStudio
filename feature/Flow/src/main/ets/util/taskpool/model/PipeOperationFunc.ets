@@ -1,42 +1,42 @@
 // 执行方法类，所有方法定义在此
-
-import { taskpool } from '@kit.ArkTS';
-import { Operator, WasteType } from '../../../Flow/Operator';
 import { liquidTypes, getLiquidType } from '../../../Setting/LiquidType';
 import { thread, DateTimeUtil } from 'base';
 import { hilog } from "@kit.PerformanceAnalysisKit";
 import { PipeOperationParams } from "../../../Setting/Setting";
-import { MeterMode, RollDirection } from 'communication';
+import { RollDirection } from 'communication';
+import { LiquidOperateFlow } from '../../../Flow/LiquidOperateFlow';
 
 @Concurrent
 export async function pipeOperation(params: PipeOperationParams): Promise<number> {
   const startTime = DateTimeUtil.getTimestamp();
-  console.info(`TLQQ `, params.liquidName, params.dir, params.mode, params.volume);
+  console.info(`TLQQ `, params.name, params.liquidName, params.dir, params.mode, params.volume);
   const source = getLiquidType(params.liquidName);
+  let suckType = liquidTypes.none;
+  let destType = liquidTypes.none;
+  let mode: number = 0;
+
+  if(params.mode === '光学定量'){
+    mode = 1;
+  } else if (params.mode === '精确定量') {
+    mode = 2;
+  }
 
   console.log(source?.name);
-  const op = Operator.getInstance();
   if (source != undefined)
   {
     if(params.dir == RollDirection.Suck)
     {
-      if(params.mode == '精确定量'){
-        console.debug('精确定量');
-        op.Pump(source, params.volume , 0.2);
-        // op.Meter(MeterMode.Accurate, source, params.volume, RollDirection.Suck);
-      }else if (params.mode == '智能定量'){
-        console.debug('光学定量');
-        op.Pump(source, params.volume , 0.2);
-        // op.Meter(MeterMode.Smart, source, params.volume, RollDirection.Suck);
-      }else{
-        console.debug('泵计步');
-        op.Pump(source, params.volume , 0.2);
-      }
+      suckType = source;
     }
     else
     {
-      op.Drain(source, params.volume , 0.2);
+      destType = source;
     }
+
+    const flow = new LiquidOperateFlow(params.liquidName, suckType, destType, mode, params.volume, params.volume, params.name);
+    flow.OnStart();
+    flow.OnProcess();
+    flow.OnStop();
   }
   hilog.info(122, 'PipeOperationFunc', '管道操作时间 = %{public}d', DateTimeUtil.getTimestamp() - startTime);
   return 1;

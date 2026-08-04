@@ -4,6 +4,17 @@ import { DateTimeUtil } from 'base';
 import { BaseController } from 'controllerplugin';
 import { PT65DriveController } from "pt65drivecontrollerplugin";
 import { liquidTypes, LiquidType } from '../Setting/LiquidType';
+import { Operator, WasteType } from '../Flow/Operator';
+import { setting } from '../Setting/Setting';
+import { config } from '../Config/Config';
+import { ThermostatMode } from 'communication'; //导入模块
+import { MeterMode, RollDirection } from 'communication';
+import { emitter } from '@kit.BasicServicesKit';
+import { WorkerMeasureStatusEvent } from './Measurer';
+import { MeasureType } from './MeasureFlow';
+
+/** Modbus 系统状态码：管路操作 */
+const COMBINE_PIPE_OPERATION_STATUS = 28;
 
 export enum CombineOperateType {
   SuckBlankToDigestionRoom,
@@ -46,7 +57,7 @@ export class CombineOperateFlow extends Flow {
     }
 
     // 检测消解室是否为安全温度
-    // op:CheckDigestSafety()
+    // op.CheckDigestSafety()
   }
 
   OnProcess(): void {
@@ -55,6 +66,7 @@ export class CombineOperateFlow extends Flow {
     this.isUserStop = false;
     this.isFinish = false;
     this.dateTime = DateTimeUtil.getTimestamp();
+    const op = Operator.getInstance();
 
     try {
       // 设置运行状态
@@ -64,41 +76,41 @@ export class CombineOperateFlow extends Flow {
       // 设置运行动作
       // let runAction = Helper.Status.SetAction(this.action);
       // StatusManager.Instance().SetAction(runAction);
+      this.emitCombinePipeOperationProgress('start', this.action);
 
       if (this.source != liquidTypes.none) {
-        const DC = new PT65DriveController();
-        // const factor = DC.GetIPeristalticPump().GetPumpFactor(0);
-        // DC.GetIOpticalMeter().SetMeteSpeed(setting.liquid.meterSpeed * factor);
+        const factor = op.IPeristalticPump.getPumpFactor(0);
+        op.IOpticalMeter.setMeteSpeed(setting.liquid.meterSpeed * factor);
 
         if (this.source == liquidTypes.blank && this.dest == liquidTypes.digestionRoom) {
-          // op:PumpToDigestionRoom(this.source, this.sVolume);
+          op.PumpToDigestionRoom(this.source, this.sVolume);
         } else if (this.source == liquidTypes.digestionRoom && this.dest == liquidTypes.waste) {
-          // op:DrainFromDigestionRoom(WasteType.WasteReagent);
+          op.DrainFromDigestionRoom(WasteType.WasteReagent);
         } else if (this.source == liquidTypes.digestionRoom && this.dest == liquidTypes.wasteWater) {
-          // op:DrainFromDigestionRoom(WasteType.WasteWater);
+          op.DrainFromDigestionRoom(WasteType.WasteWater);
         } else if (this.source == liquidTypes.gas && this.dest == liquidTypes.none) {
-          // const drainSpeed = 400 * factor;
-          // op:Pump(this.source, this.sVolume, drainSpeed);
+          const drainSpeed = 400 * factor;
+          op.Pump(this.source, this.sVolume, drainSpeed);
         } else if (this.source == liquidTypes.blank && this.dest == liquidTypes.wasteWater) {
           // 排空液体
-          // op:DrainToWaste(setting.liquid.meterPipeVolume);
-          // op:DrainFromDigestionRoom();
+          op.DrainToWaste(setting.liquid.meterPipeVolume);
+          op.DrainFromDigestionRoom();
           // 加零点校准液至消解管
-          // op:PumpToDigestionRoom(this.source, this.sVolume);
+          op.PumpToDigestionRoom(this.source, this.sVolume);
           // 加热
-          // this.Heating(setting.temperature.oneKeyHeatingTemp);
+          this.Heating(setting.temperature.oneKeyHeatingTemp);
           // 冷却
-          // this.Cooling(setting.temperature.oneKeyHeatingCoolingTemp);
+          this.Cooling(setting.temperature.oneKeyHeatingCoolingTemp);
           // 排液
-          // op:DrainFromDigestionRoom(this.dest);
+          op.DrainFromDigestionRoom(WasteType.WasteWater);
         } else if (this.source == liquidTypes.blank && this.dest == liquidTypes.blank) {
-          // op:Pump(liquidTypes.none, 0.5, 0.2, false);
-          // DC.GetIOpticalMeter().SetMeteSpeed(setting.liquid.meterSpeed * 0.3 * factor);
-          // op:SetMeterOverValue(MeterMode.Accurate, setting.liquid.accurateMeterOverValue);
-          // op:Meter(MeterMode.Accurate, this.source, this.sVolume, RollDirection.Suck);
+          op.Pump(liquidTypes.none, 0.5, 0.2, false);
+          op.IOpticalMeter.setMeteSpeed(setting.liquid.meterSpeed * 0.3 * factor);
+          op.SetMeterOverValue(MeterMode.Accurate, setting.liquid.accurateMeterOverValue);
+          op.Meter(MeterMode.Accurate, this.source, this.sVolume, RollDirection.Suck);
         } else if (this.source == liquidTypes.standard && this.dest == liquidTypes.standard) {
-          // op:Drain(liquidTypes.none, 0.5, 0.2);
-          // op:Drain(this.source, this.sVolume, 0.2);
+          op.Drain(liquidTypes.none, 0.5, 0.2);
+          op.Drain(this.source, this.sVolume, 0.2);
         } else {
           hilog.warn(122, 'CombineOperateFlow', '此模式不支持');
           return;
@@ -109,6 +121,7 @@ export class CombineOperateFlow extends Flow {
         if (err.message.includes("PumpStoppedException") ||
             err.message.includes("MeterStoppedException")) {
           this.isUserStop = true;
+          this.emitCombinePipeOperationProgress('end');
         }
         throw err;
       }
@@ -116,6 +129,7 @@ export class CombineOperateFlow extends Flow {
 
     this.isFinish = true;
     hilog.info(122, 'CombineOperateFlow', 'OnProcess End');
+    this.emitCombinePipeOperationProgress('end');
   }
 
   OnStop(): void {
@@ -163,7 +177,7 @@ export class CombineOperateFlow extends Flow {
     //     throw new Error("用户终止");
     //   }
 
-    //   // op:dryFireDitect();
+    //   // op.dryFireDitect();
 
     //   // 关闭LED
     //   DC.GetIOpticalAcquire().TurnOffLED();
@@ -176,8 +190,8 @@ export class CombineOperateFlow extends Flow {
 
     // const temp = targetTemp - thermostatTemp;
     // if (temp > 0.01) {
-    //   // op:StartThermostat(ThermostatMode.Auto, targetTemp, setting.temperature.toleranceTemp, setting.temperature.oneKeyHeatingTempTimeout);
-    //   // op:StopThermostat();
+    //   // op.StartThermostat(ThermostatMode.Auto, targetTemp, setting.temperature.toleranceTemp, setting.temperature.oneKeyHeatingTempTimeout);
+    //   // op.StopThermostat();
     // }
 
     // hilog.info(122, 'CombineOperateFlow', '加热时间 = %{public}ds', DateTimeUtil.getTimestamp() - startTime);
@@ -196,9 +210,41 @@ export class CombineOperateFlow extends Flow {
 
     // const difference = thermostatTemp - targetTemp;
     // if (difference > 0.01) {
-    //   // op:StartThermostat(ThermostatMode.Auto, targetTemp, setting.temperature.toleranceTemp, setting.temperature.oneKeyHeatingCoolingTempTimeout);
+    //   // op.StartThermostat(ThermostatMode.Auto, targetTemp, setting.temperature.toleranceTemp, setting.temperature.oneKeyHeatingCoolingTempTimeout);
     // }
 
     // hilog.info(122, 'CombineOperateFlow', '消解冷却时间 = %{public}ds', DateTimeUtil.getTimestamp() - startTime);
+  }
+
+  /**
+   * 向主线程发送测量进度事件。
+   * 事件通过 emitter 进程级事件总线发送，包含当前状态和当前动作的完整信息。
+   */
+  private emitCombinePipeOperationProgress(phase: 'start' | 'action' | 'end', action?: string): void {
+    const statusInfo: string = setting.runStatus.liquidOperate.text;
+    const payload: WorkerMeasureStatusEvent = {
+      type: 'measureProgress',
+      phase: phase,
+      statusLabel: statusInfo,
+      statusTotalSeconds: 0,
+      actionLabel: action ?? '空闲',
+      actionTotalSeconds: 0,
+      measureType: MeasureType.Sample, // 非测量流程占位，实际以 systemStatusCode 为准
+      timestamp: DateTimeUtil.getTimestamp(),
+      systemStatusCode: COMBINE_PIPE_OPERATION_STATUS
+    };
+    const eventData: emitter.EventData = {
+      data: payload
+    };
+    emitter.emit("MeasureStatus", eventData);
+    hilog.info(
+      100,
+      'LiquidOperateFlow',
+      'emit progress phase=%{public}s status=%{public}s action=%{public}s actionTime=%{public}d',
+      phase,
+      statusInfo,
+      action ?? '空闲',
+      0
+    );
   }
 }

@@ -28,8 +28,13 @@ export struct UserPage {
   @State private passwordMessage: string = '';
   @State private accountMessage: string = '';
   @State private isChangingPassword: boolean = false;
-
+  @State private permissions: string[] = [];
+  private groupCount: number = 10;
   private permissionMgr: PermissionManager = PermissionManager.getInstance();
+
+  aboutToAppear(): void {
+    this.permissions = this.permissionMgr.getPermissionDescriptions();
+  }
 
   private getHostContext(): common.Context | null {
     const context = this.getUIContext().getHostContext();
@@ -266,19 +271,33 @@ export struct UserPage {
             .fontColor('#1F2937')
             .margin({ bottom: UiUtil.vh(1.0, 7, 12, this.viewportHeight, this.scaleFactor) })
 
-          ForEach(this.permissionMgr.getPermissionDescriptions(), (item: string) => {
-            Row() {
-              Text('•')
-                .fontSize(UiUtil.vh(1.8, 12, 18, this.viewportHeight, this.scaleFactor))
-                .fontColor('#0B9F9A')
-                .margin({ right: UiUtil.vw(0.6, 5, 9, this.viewportWidth, this.scaleFactor) })
-              Text(item)
-                .fontSize(UiUtil.vh(1.55, 11, 16, this.viewportHeight, this.scaleFactor))
-                .fontColor('#374151')
-            }
-            .width('100%')
-            .margin({ bottom: UiUtil.vh(0.55, 3, 7, this.viewportHeight, this.scaleFactor) })
-          }, (item: string) => item)
+          Row() {
+            ForEach(Array.from({ length: Math.ceil(this.permissions.length / this.groupCount) }),
+              (data: string, Index) => {
+                Column() {
+                  ForEach(this.permissions, (item: string, index) => {
+                    if (this.groupCount * Index <= index && index < this.groupCount * (Index + 1)) {
+                      Row() {
+                        Text('•')
+                          .fontSize(UiUtil.vh(1.8, 12, 18, this.viewportHeight, this.scaleFactor))
+                          .fontColor('#0B9F9A')
+                          .margin({ right: UiUtil.vw(0.6, 5, 9, this.viewportWidth, this.scaleFactor) })
+                        Text(this.permissions[index])
+                          .fontSize(UiUtil.vh(1.55, 11, 16, this.viewportHeight, this.scaleFactor))
+                          .fontColor('#374151')
+                      }
+                      .width(200)
+                      .margin({ bottom: UiUtil.vh(0.55, 3, 7, this.viewportHeight, this.scaleFactor) })
+                      .justifyContent(FlexAlign.Start)
+                    }
+                  })
+                }
+                .height('100%')
+                .justifyContent(FlexAlign.Start)
+              })
+          }
+          .width('100%')
+          .height('100%')
         }
         .width('90%')
         .layoutWeight(1)

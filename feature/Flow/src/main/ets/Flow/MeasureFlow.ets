@@ -191,30 +191,30 @@ export class MeasureFlow extends Flow {
           // this.addParam = rangeConfig;
           const safeCopy: RangeConfig = {};
           this.updateRangeConfigFromSource(safeCopy, rangeConfig);
-          this.addParam = safeCopy;
+          measure.addParam = safeCopy;
         }
 
         //不修改Measurer内部的addPrams,在MeasureFlow修改后将参数暴露,后续注册到任务中
         if (this.measureType === MeasureType.Blank) {
-          this.addParam.blankVolume = (rangeConfig.blankVolume || 0) + (rangeConfig.sampleVolume || 0);
-          this.addParam.sampleVolume = 0;
-          this.addParam.rinseBlankVolume = (rangeConfig.rinseBlankVolume || 0) + (rangeConfig.rinseSampleVolume || 0);
-          this.addParam.rinseSampleVolume = 0;
+          measure.addParam.blankVolume = (rangeConfig.blankVolume || 0) + (rangeConfig.sampleVolume || 0);
+          measure.addParam.sampleVolume = 0;
+          measure.addParam.rinseBlankVolume = (rangeConfig.rinseBlankVolume || 0) + (rangeConfig.rinseSampleVolume || 0);
+          measure.addParam.rinseSampleVolume = 0;
         } else if (this.measureType === MeasureType.Standard) {
-          this.addParam.standardVolume = (rangeConfig.standardVolume || 0) + (rangeConfig.sampleVolume || 0);
-          this.addParam.sampleVolume = 0;
-          this.addParam.rinseStandardVolume = (rangeConfig.rinseStandardVolume || 0) + (rangeConfig.rinseSampleVolume || 0);
-          this.addParam.rinseSampleVolume = 0;
+          measure.addParam.standardVolume = (rangeConfig.standardVolume || 0) + (rangeConfig.sampleVolume || 0);
+          measure.addParam.sampleVolume = 0;
+          measure.addParam.rinseStandardVolume = (rangeConfig.rinseStandardVolume || 0) + (rangeConfig.rinseSampleVolume || 0);
+          measure.addParam.rinseSampleVolume = 0;
         } else if (this.measureType === MeasureType.ZeroCheck) {
-          this.addParam.zeroCheckVolume = (rangeConfig.zeroCheckVolume || 0) + (rangeConfig.sampleVolume || 0);
-          this.addParam.sampleVolume = 0;
-          this.addParam.rinseZeroCheckVolume = (rangeConfig.rinseZeroCheckVolume || 0) + (rangeConfig.rinseSampleVolume || 0);
-          this.addParam.rinseSampleVolume = 0;
+          measure.addParam.zeroCheckVolume = (rangeConfig.zeroCheckVolume || 0) + (rangeConfig.sampleVolume || 0);
+          measure.addParam.sampleVolume = 0;
+          measure.addParam.rinseZeroCheckVolume = (rangeConfig.rinseZeroCheckVolume || 0) + (rangeConfig.rinseSampleVolume || 0);
+          measure.addParam.rinseSampleVolume = 0;
         } else if (this.measureType === MeasureType.RangeCheck) {
-          this.addParam.rangeCheckVolume = (rangeConfig.rangeCheckVolume || 0) + (rangeConfig.sampleVolume || 0);
-          this.addParam.sampleVolume = 0;
-          this.addParam.rinseRangeCheckVolume = (rangeConfig.rinseRangeCheckVolume || 0) + (rangeConfig.rinseSampleVolume || 0);
-          this.addParam.rinseSampleVolume = 0;
+          measure.addParam.rangeCheckVolume = (rangeConfig.rangeCheckVolume || 0) + (rangeConfig.sampleVolume || 0);
+          measure.addParam.sampleVolume = 0;
+          measure.addParam.rinseRangeCheckVolume = (rangeConfig.rinseRangeCheckVolume || 0) + (rangeConfig.rinseSampleVolume || 0);
+          measure.addParam.rinseSampleVolume = 0;
         }
 
         this.diluteFactor = measure.addParam.diluteFactor || 1;
@@ -226,7 +226,7 @@ export class MeasureFlow extends Flow {
         if (this.isCrashMeasure && config.system.cCepMode) {
           // this.RetryMeasureCheck();
         } else {
-          // measure.Measure();
+          measure.Measure();
 
           if (this.measureType === MeasureType.AddStandard || this.measureType === MeasureType.Parallel) {
             // if (measure.flow) {
@@ -261,6 +261,11 @@ export class MeasureFlow extends Flow {
           }
         }
       } catch (err) {
+        const error = err as Error;
+        if (error.message.includes('PumpStoppedException')){
+          this.isUserStop = true;
+        }
+        console.info(`MeasureFlow Error: name=${error.name}, message=${error.message}, stack=${error.stack}`);
         // TODO 错误处理
       }
     }

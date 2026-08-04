@@ -8,7 +8,13 @@ import { Operator, WasteType } from '../Flow/Operator';
 import { setting } from '../Setting/Setting';
 import { config } from '../Config/Config';
 import { ThermostatMode, MeterMode, RollDirection } from 'communication'; //导入模块
+import { emitter } from '@kit.BasicServicesKit';
+import { ActionItem } from '../Setting/RunAction';
+import { WorkerMeasureStatusEvent } from './Measurer';
+import { MeasureType } from './MeasureFlow';
 
+/** Modbus 系统状态码：定量泵校准 */
+const QUANT_PUMP_CAL_STATUS = 11;
 
 export enum AutoPumpCheckType {
   AutoPumpCheck = 0,
@@ -50,6 +56,8 @@ export class AutoPumpCheckFlow extends Flow {
     this.isFinish = false;
     let dateTime = DateTimeUtil.getTimestamp(); //Date.now();
 
+    this.emitAutoPumpCheckProgress('start', setting.runAction.pumpCheck.drainMeterPipe);
+
     try {
       const source = liquidTypes.blank;  // 需要根据实际定义
       const op = Operator.getInstance();
@@ -59,28 +67,30 @@ export class AutoPumpCheckFlow extends Flow {
       op.IOpticalMeter.setMeteSpeed(setting.liquid.meterSpeed * factor);
       hilog.info(122, 'AutoPumpCheckFlow', "Set Meter Speed " + (setting.liquid.meterSpeed * factor));
 
-      // 设置运行动作状态
-      // let runAction = Helper.Status.SetAction(setting.runAction.pumpCheck.drainMeterPipe);
-      // StatusManager.Instance().SetAction(runAction);
-
       // 排走定量管液体
+      this.emitAutoPumpCheckProgress('action', setting.runAction.pumpCheck.drainMeterPipe);
       op.DrainToWaste(setting.liquid.meterPipeVolume);
-
-      // runAction = Helper.Status.SetAction(setting.runAction.pumpCheck.meterToMinMeterPoint);
-      // StatusManager.Instance().SetAction(runAction);
+      if (this.IsCancelled()) {
+        throw new Error("UserStopException");
+      }
 
       // 精确定量最小定量点的液体
+      this.emitAutoPumpCheckProgress('action', setting.runAction.pumpCheck.meterToMinMeterPoint);
       this.MeterToMinMeterPoint(source);
+      if (this.IsCancelled()) {
+        throw new Error("UserStopException");
+      }
 
       // 设置速度
       op.IOpticalMeter.setMeteSpeed(30 * factor);
       hilog.info(122, 'AutoPumpCheckFlow', "Set Meter Speed " + (30 * factor));
 
-      // runAction = Helper.Status.SetAction(setting.runAction.pumpCheck.meterToMaxMeterPoint);
-      // StatusManager.Instance().SetAction(runAction);
-
       // 直接定量最大定量点的液体
+      this.emitAutoPumpCheckProgress('action', setting.runAction.pumpCheck.meterToMaxMeterPoint);
       this.MeterToMaxMeterPoint(source);
+      if (this.IsCancelled()) {
+        throw new Error("UserStopException");
+      }
 
       op.IOpticalMeter.setMeteSpeed(setting.liquid.meterSpeed * factor);
       hilog.info(122, 'AutoPumpCheckFlow', "Set Meter Speed " + (setting.liquid.meterSpeed * factor));
@@ -91,10 +101,11 @@ export class AutoPumpCheckFlow extends Flow {
       const setFactor = (config.hardware.meterPoint.point[1].realVolume -
                          config.hardware.meterPoint.point[0].setVolume) / step;
 
-      // runAction = Helper.Status.SetAction(setting.runAction.pumpCheck.drainMeterPipe);
-      // StatusManager.Instance().SetAction(runAction);
-
+      this.emitAutoPumpCheckProgress('action', setting.runAction.pumpCheck.drainMeterPipe);
       op.DrainToWaste(setting.liquid.meterPipeVolume);
+      if (this.IsCancelled()) {
+        throw new Error("UserStopException");
+      }
 
       // hilog.info(122, 'AutoPumpCheckFlow', "Set Meter Speed " , setFactor);
       // op.IOpticalMeter.setPumpFactor(setFactor);
@@ -102,20 +113,56 @@ export class AutoPumpCheckFlow extends Flow {
 
       // 保存配置到数据库 TODO
       hilog.info(122, 'AutoPumpCheckFlow', "### ");
+
+      this.isFinish = true;
     } catch (err) {
       hilog.info(122, 'AutoPumpCheckFlow', "Catch Err ");
       if (err instanceof Error) {
         // 检查异常类型
-        if (err.message.includes("PumpStoppedException") || 
-            err.message.includes("MeterStoppedException")) {
+        if (err.message.includes("PumpStoppedException") ||
+            err.message.includes("MeterStoppedException") ||
+            err.message.includes("UserStopException")) {
           this.isUserStop = true;
         }
         throw err;
       }
+    } finally {
+      // 无论正常结束、用户停止还是异常，都发送 end 事件，让底部进度条和 Modbus 回到空闲
+      this.emitAutoPumpCheckProgress('end');
     }
 
-    this.isFinish = true;
     hilog.info(122, 'AutoPumpCheckFlow', 'OnProcess End, duration: %{public}dms', DateTimeUtil.getTimestamp());
+  }
+
+  /**
+   * 向主线程发送定量泵自动校准进度事件。
+   */
+  private emitAutoPumpCheckProgress(phase: 'start' | 'action' | 'end', action?: ActionItem): void {
+    const statusInfo = setting.runStatus.autoPumpCheck;
+    const payload: WorkerMeasureStatusEvent = {
+      type: 'measureProgress',
+      phase: phase,
+      statusLabel: statusInfo.text,
+      statusTotalSeconds: statusInfo.GetTime?.() ?? 0,
+      actionLabel: action?.text ?? '空闲',
+      actionTotalSeconds: action?.GetTime?.() ?? 0,
+      measureType: MeasureType.Sample, // 非测量流程占位，实际以 systemStatusCode 为准
+      timestamp: DateTimeUtil.getTimestamp(),
+      systemStatusCode: QUANT_PUMP_CAL_STATUS
+    };
+    const eventData: emitter.EventData = {
+      data: payload
+    };
+    emitter.emit("MeasureStatus", eventData);
+    hilog.info(
+      100,
+      'AutoPumpCheckFlow',
+      'emit progress phase=%{public}s status=%{public}s action=%{public}s actionTime=%{public}d',
+      phase,
+      statusInfo.text,
+      action?.text ?? '空闲',
+      action?.GetTime?.() ?? 0
+    );
   }
 
   OnStop(): void {

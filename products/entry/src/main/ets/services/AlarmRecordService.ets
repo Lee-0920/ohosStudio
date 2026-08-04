@@ -24,6 +24,7 @@ import {
 } from '../models/dataRecordTypes';
 import { DataRecordDao } from '../dao/DataRecordDao';
 import { OperationLogService } from './OperationLogService';
+import { AlarmManager, AlarmCode } from 'alarm';
 
 const DEFAULT_POLL_INTERVAL_MS = 3000;
 const STATUS_RECORDED = 'recorded';
@@ -136,6 +137,9 @@ export class AlarmRecordService {
           source: 'alarm_record_service',
           detail: `alarmCode=${code}`
         }, LOG_RESULT_INFO);
+
+        // 同步到 alarm 模块的文件/内存告警列表，供告警管理界面查询
+        AlarmManager.getInstance().triggerAlarm(code as AlarmCode, label);
       }
     } finally {
       AlarmRecordService.isCapturing = false;

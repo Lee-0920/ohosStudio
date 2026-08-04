@@ -2,6 +2,8 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { UiUtil } from 'base';
 import { DataActionButton } from '../components/DataActionButton';
 import { StatusChip } from '../components/StatusChip';
+import { MeasureType } from 'flow';
+
 import {
   ConnectionSnapshot,
   DeviceEvent,
@@ -14,7 +16,6 @@ import { DeviceStateStore } from '../services/DeviceStateStore';
 import { MonitorService } from '../services/MonitorService';
 import { ResultManager, MeasureRecord } from 'dataservice';
 import { dncp } from 'communication';
-import { MeasureType } from 'flow';
 
 const DOMAIN = 0x0001;
 const TAG = 'HomePage';
@@ -220,6 +221,7 @@ export struct HomePage {
 
     this.isCalibrationSubmitting = true;
     this.calibrationDialogMessage = '';
+
     try {
       hilog.info(DOMAIN, TAG, 'Start current range calibration');
       const started = await MonitorService.startCalibration();
@@ -241,9 +243,11 @@ export struct HomePage {
     if (this.isCalibrationSubmitting || !this.canOperateInstrument) {
       return;
     }
+    this.isMcuConnected = MonitorService.isConnectedToMcu();
 
     this.isCalibrationSubmitting = true;
     this.calibrationDialogMessage = '';
+
     try {
       // 疑问点：当前协议只在“当前动作”输入寄存器里定义了 code=46 的“一键更新试剂”，
       // 测量控制保持寄存器暂未定义对应可写控制码，所以这里只发送读命令并忽略响应，再继续校准流程。
@@ -275,6 +279,7 @@ export struct HomePage {
     hilog.info(DOMAIN, TAG, 'Start span check');
     const started = await MonitorService.startSpanCheck();
     this.isMcuConnected = MonitorService.isConnectedToMcu();
+
     if (!started) {
       hilog.error(DOMAIN, TAG, 'Start span check failed');
       return;
@@ -425,7 +430,10 @@ export struct HomePage {
     //初始化DNCP 保证全局只初始化一次
     dncp.createPlugin();
     dncp.addSlaveNode(1);
-    dncp.initDncpStack("/dev/ttyS0",false,"");
+    dncp.initDncpStack("/dev/ttyS0",false, '',
+      (pollingAddr: number, status: boolean) => {
+        console.info(`[DNCP] Device ${pollingAddr} status: ${status}`);
+      });
     console.log('通信模块初始化完成');
 
     this.releaseDeviceSubscriptions();
@@ -644,55 +652,6 @@ export struct HomePage {
                 top: -UiUtil.vh(0.3, 2, 5, this.viewportHeight, this.scaleFactor),
                 bottom: UiUtil.vh(0.8, 6, 12, this.viewportHeight, this.scaleFactor)
               })
-
-            // Runtime state row: running badge + two status chips.
-            Row() {
-              Row() {
-                Image($r('app.media.play'))
-                  .width(UiUtil.vh(1.35, 10, 16, this.viewportHeight, this.scaleFactor))
-                  .height(UiUtil.vh(1.35, 10, 16, this.viewportHeight, this.scaleFactor))
-                  .objectFit(ImageFit.Contain)
-                  .fillColor('#D8DEE4')
-                  .margin({ right: UiUtil.vw(0.35, 3, 6, this.viewportWidth, this.scaleFactor) })
-                Text(this.runtimeBadgeText())
-                  .fontSize(UiUtil.vh(1.4, 10, 16, this.viewportHeight, this.scaleFactor))
-                  .fontColor('#D8DEE4')
-                  .fontWeight(FontWeight.Regular)
-                  .fontFamily('HarmonyOS Sans')
-              }
-              .height(UiUtil.vh(2.8, 22, 34, this.viewportHeight, this.scaleFactor))
-              .padding({
-                left: UiUtil.vw(1.2, 10, 22, this.viewportWidth, this.scaleFactor),
-                right: UiUtil.vw(1.2, 10, 22, this.viewportWidth, this.scaleFactor)
-              })
-              .borderRadius(UiUtil.vh(1.4, 10, 18, this.viewportHeight, this.scaleFactor))
-              .border({ width: UiUtil.vh(0.1, 1, 1.8, this.viewportHeight, this.scaleFactor), color: '#FFFFFF' })
-              .backgroundColor('#484747')
-              .margin({ right: UiUtil.vw(0.7, 6, 12, this.viewportWidth, this.scaleFactor) })
-
-              Column() {
-                StatusChip({
-                  label: this.measurementStatusText(),
-                  viewportWidth: this.viewportWidth,
-                  viewportHeight: this.viewportHeight,
-                  scaleFactor: this.scaleFactor
-                })
-              }
-              .margin({ right: UiUtil.vw(0.7, 6, 12, this.viewportWidth, this.scaleFactor) })
-
-              StatusChip({
-                label: this.connectionStatusText(),
-                viewportWidth: this.viewportWidth,
-                viewportHeight: this.viewportHeight,
-                scaleFactor: this.scaleFactor
-              })
-            }
-            .width('100%')
-            .justifyContent(FlexAlign.Center)
-            .margin({
-              top: UiUtil.vh(2.0, 8, 12, this.viewportHeight, this.scaleFactor),
-              bottom: UiUtil.vh(1.2, 4, 8, this.viewportHeight, this.scaleFactor)
-            })
           }
           .width('100%')
           .height('100%')

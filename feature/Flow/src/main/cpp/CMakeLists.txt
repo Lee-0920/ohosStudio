@@ -11,5 +11,5 @@ endif()
 include_directories(${NATIVERENDER_ROOT_PATH}
                     ${NATIVERENDER_ROOT_PATH}/include)
 
-add_library(flow SHARED napi_init.cpp)
+add_library(flow SHARED napi_init.cpp ../../../../Communication/src/main/cpp/NAPI/ConnectStatusBridge.h)
 target_link_libraries(flow PUBLIC libace_napi.z.so)

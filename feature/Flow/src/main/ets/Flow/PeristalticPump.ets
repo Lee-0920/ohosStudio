@@ -1,5 +1,6 @@
 import { hilog } from "@kit.PerformanceAnalysisKit";
-
+import type { Pump, MotionParam, PumpResult } from 'communication'; // 或分别从各文件 import type
+import { PumpStatus, PumpOperateResult } from 'communication'; //导入模块
 /**
  * 单个蠕动泵封装类
  * 对单个蠕动泵的功能进行封装
@@ -8,12 +9,12 @@ import { hilog } from "@kit.PerformanceAnalysisKit";
 export class PeristalticPump {
   index: number = 0;
   isRunning: boolean = false;
-  peristalticPumpInterface: number = 0; //TODO: 未实现
+  peristalticPumpInterface: Pump; //TODO: 未实现
 
-  constructor(index: number = 0, pumpInterface?: number) {
+  constructor(index: number = 0, pumpInterface: Pump) {
     this.index = index;
     this.isRunning = false;
-    this.peristalticPumpInterface = pumpInterface ?? 0;
+    this.peristalticPumpInterface = pumpInterface;
   }
 
   /**
@@ -21,7 +22,7 @@ export class PeristalticPump {
    */
   GetFactor(): number {
     if (this.peristalticPumpInterface) {
-      // return this.peristalticPumpInterface.GetPumpFactor(this.index);
+      return this.peristalticPumpInterface.getPumpFactor(this.index);
     }
     return 0;
   }
@@ -32,7 +33,7 @@ export class PeristalticPump {
    */
   SetFactor(factor: number): boolean {
     if (this.peristalticPumpInterface) {
-      // return this.peristalticPumpInterface.SetPumpFactor(this.index, factor);
+      return this.peristalticPumpInterface.setPumpFactor(this.index, factor);
     }
     return false;
   }
@@ -40,20 +41,21 @@ export class PeristalticPump {
   /**
    * 获取运动参数
    */
-  GetMotionParam(): number {
+  GetMotionParam(): MotionParam {
+    const param: MotionParam = { acceleration: 0, speed: 0};
     if (this.peristalticPumpInterface) {
-      // return this.peristalticPumpInterface.GetMotionParam(this.index);
+      return this.peristalticPumpInterface.getMotionParam(this.index);
     }
-    return 0;
+    return param;
   }
 
   /**
    * 设置运动参数
    * @param param 运动参数
    */
-  SetMotionParam(param: number): boolean {
+  SetMotionParam(param: MotionParam): boolean {
     if (this.peristalticPumpInterface) {
-      // return this.peristalticPumpInterface.SetMotionParam(this.index, param);
+      return this.peristalticPumpInterface.setMotionParam(this.index, param);
     }
     return false;
   }
@@ -61,9 +63,9 @@ export class PeristalticPump {
   /**
    * 获取泵状态
    */
-  GetStatus(): number {
+  GetStatus(): PumpStatus {
     if (this.peristalticPumpInterface) {
-      // return this.peristalticPumpInterface.GetPumpStatus(this.index);
+      return this.peristalticPumpInterface.getPumpStatus(this.index);
     }
     return 0;
   }
@@ -77,7 +79,7 @@ export class PeristalticPump {
   Start(dir: number, volume: number, speed: number): boolean {
     this.isRunning = true;
     if (this.peristalticPumpInterface) {
-      // return this.peristalticPumpInterface.StartPump(this.index, dir, volume, speed);
+      return this.peristalticPumpInterface.startPump(this.index, dir, volume, speed);
     }
     return false;
   }
@@ -88,7 +90,7 @@ export class PeristalticPump {
   Stop(): boolean {
     this.isRunning = false;
     if (this.peristalticPumpInterface) {
-      // return this.peristalticPumpInterface.StopPump(this.index);
+      return this.peristalticPumpInterface.stopPump(this.index);
     }
     return false;
   }
@@ -98,7 +100,7 @@ export class PeristalticPump {
    */
   GetVolume(): number {
     if (this.peristalticPumpInterface) {
-      // return this.peristalticPumpInterface.GetPumpVolume(this.index);
+      return this.peristalticPumpInterface.getPumpVolume(this.index);
     }
     return 0;
   }
@@ -107,17 +109,14 @@ export class PeristalticPump {
    * 等待泵操作结果
    * @param timeout 超时时间
    */
-  ExpectResult(timeout: number): void {  // TODO
-    // const pumpResult = PumpResult.new();
-    // pumpResult.SetIndex(0);
-    // pumpResult.SetResult(PumpOperateResult.Failed);
+  ExpectResult(timeout: number): PumpResult {  // TODO
+    let pumpResult: PumpResult = { index: 0, result: PumpOperateResult.Failed};
 
-    // if (this.peristalticPumpInterface) {
-    //   pumpResult = this.peristalticPumpInterface.ExpectPumpResult(timeout);
-    // }
+    if (this.peristalticPumpInterface) {
+      pumpResult = this.peristalticPumpInterface.expectPumpResult(timeout);
+    }
 
-    // this.isRunning = false;
-    // return pumpResult;
-    // return null;
+    this.isRunning = false;
+    return pumpResult;
   }
 }

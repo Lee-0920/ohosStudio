@@ -157,31 +157,45 @@ DscpEventPtr DeviceInterface::Expect(int code, int timeout)
     DscpEventPtr event = nullptr;
     try
     {
-        OH_LOG_INFO(LOG_APP, "DeviceInterface::Expect #1");
         event = EventHandler::Instance()->Expect(m_addr,code,timeout);
-        OH_LOG_INFO(LOG_APP, "DeviceInterface::Expect #2");
     }
     catch(ExpectEventTimeoutException e)
     {
-        OH_LOG_INFO(LOG_APP, "重获事件 {addr = %{public}s, code = %{public}X}",
+        OH_LOG_ERROR(LOG_APP, "重获事件 {addr = %{public}s, code = %{public}X}",
                 e.m_addr.ToString().c_str(),
                 e.m_code);
+         try {
+            Uint16 status = DscpStatus::Error;
 
-        Uint16 status = DscpStatus::Error;
-
-        DscpCmdPtr cmd(new DscpCommand(m_addr, DSCP_SYSCMD_ACQUIRE_EVENT));
-        SyncCaller syncCaller(m_retries);
-        status = syncCaller.SendWithStatus(cmd);
-
-        OH_LOG_INFO(LOG_APP, "重获命令应答：%{public}d", status);
-
-        if(status == DscpStatus::OK)
-        {
-            event = EventHandler::Instance()->Expect(m_addr, code, 6000);
-        }
-        else
-        {
-            //因为catch的时候调用异常的拷贝函数，LUA与C++的交互栈已经没有异常类，需要重新定义异常然后抛出
+            DscpCmdPtr cmd(new DscpCommand(m_addr, DSCP_SYSCMD_ACQUIRE_EVENT));
+            SyncCaller syncCaller(m_retries);
+            status = syncCaller.SendWithStatus(cmd);
+    
+            OH_LOG_ERROR(LOG_APP, "重获命令应答：%{public}d", status);
+    
+            if(status == DscpStatus::OK)
+            {
+                try {
+                    event = EventHandler::Instance()->Expect(m_addr, code, 6000);
+                } catch (ExpectEventTimeoutException e) {
+                    OH_LOG_ERROR(LOG_APP, "重获事件 {addr = %{public}s, code = %{public}X}",
+                            e.m_addr.ToString().c_str(),
+                            e.m_code);
+                    // 吞掉异常，返回 nullptr，绝不让异常逃逸出 DeviceInterface::Expect
+                }
+            }
+            else
+            {
+                OH_LOG_ERROR(LOG_APP, "ExpectEventTimeoutException：重获命令应答无效");
+                //因为catch的时候调用异常的拷贝函数，LUA与C++的交互栈已经没有异常类，需要重新定义异常然后抛出
+                // 吞掉异常，返回 nullptr，绝不让异常逃逸出 DeviceInterface::Expect
+                throw ExpectEventTimeoutException(e.m_addr, e.m_code);
+            }
+         } catch (ExpectEventTimeoutException e) {
+            OH_LOG_ERROR(LOG_APP, "重获事件 {addr = %{public}s, code = %{public}X}",
+                    e.m_addr.ToString().c_str(),
+                    e.m_code);
+            // 吞掉异常，返回 nullptr，绝不让异常逃逸出 DeviceInterface::Expect
             throw ExpectEventTimeoutException(e.m_addr, e.m_code);
         }
     }

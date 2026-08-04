@@ -1,6 +1,5 @@
 import { common } from '@kit.AbilityKit';
 import { DataActionButton } from '../../components/DataActionButton';
-import { CalendarPickerPanel } from '../../components/data/CalendarPickerPanel';
 import { DataPager } from '../../components/data/DataPager';
 import { ALL_FILTER_OPTION } from '../../models/dataRecordTypes';
 import { ResultManager, MeasureRecord, MeasureType, ResultMode, MeasureQueryCondition } from 'dataservice';
@@ -21,7 +20,6 @@ export struct MeasurementDataPanel {
   @State private selectedFlag: string = ALL_FILTER_OPTION;
   @State private startDate: string = '';
   @State private endDate: string = '';
-  @State private activePicker: string = '';
   @State private isLoading: boolean = false;
   private readonly pageSize: number = 6;
   private readonly typeOptions: SelectOption[] = [
@@ -46,6 +44,8 @@ export struct MeasurementDataPanel {
     { value: '维护调试数据' },
     { value: '非水样结果' }
   ];
+  private selectedStartDate: Date = new Date();
+  private selectedEndDate: Date = new Date();
 
   async aboutToAppear(): Promise<void> {
     this.ensureDefaultDates();
@@ -57,6 +57,7 @@ export struct MeasurementDataPanel {
       console.warn('MeasurementDataPanel: 无法获取 host context');
     }
     void this.refreshRecords();
+    this.selectedStartDate.setDate(this.selectedEndDate.getDate() - 30);
   }
 
   private timeColumnWidth(): number {
@@ -313,29 +314,6 @@ export struct MeasurementDataPanel {
     });
   }
 
-  private togglePicker(name: string): void {
-    this.activePicker = this.activePicker === name ? '' : name;
-  }
-
-  @Builder
-  private dateField(name: string) {
-    Text(name === 'start' ? this.startDate : this.endDate)
-      .height(UiUtil.vh(4.1, 30, 42, this.viewportHeight, this.scaleFactor))
-      .width(UiUtil.vw(11.2, 86, 126, this.viewportWidth, this.scaleFactor))
-      .fontSize(UiUtil.vh(1.45, 11, 15, this.viewportHeight, this.scaleFactor))
-      .fontColor('#222222')
-      .textAlign(TextAlign.Center)
-      .border({
-        width: UiUtil.vh(0.1, 1, 2, this.viewportHeight, this.scaleFactor),
-        color: this.activePicker === name ? '#0B9F9A' : '#0A6BFF'
-      })
-      .borderRadius(UiUtil.vh(0.55, 3, 6, this.viewportHeight, this.scaleFactor))
-      .backgroundColor(this.activePicker === name ? '#F1FFFE' : '#FFFFFF')
-      .onClick(() => {
-        this.togglePicker(name);
-      })
-  }
-
   build() {
     Column() {
       Row() {
@@ -448,11 +426,9 @@ export struct MeasurementDataPanel {
           onNext: () => this.goNextPage(),
           onLast: () => this.goLastPage(),
           onExport: () => {
-            this.activePicker = '';
             void this.exportMeasureRecords();
           },
           onClear: () => {
-            this.activePicker = '';
             void this.clearMeasureRecords();
           }
         })
@@ -462,14 +438,26 @@ export struct MeasurementDataPanel {
 
       Column() {
         Row() {
-          this.dateField('start');
+          CalendarPicker({ hintRadius: 10, selected: this.selectedStartDate })
+            .edgeAlign(CalendarAlign.END)
+            .textStyle({ color: '#ff182431', font: { size: 20, weight: FontWeight.Normal } })
+            .margin(10)
+            .onChange((value) => {
+              this.selectedStartDate = value;
+            })
           Text('-')
             .fontSize(UiUtil.vh(1.6, 12, 16, this.viewportHeight, this.scaleFactor))
             .margin({
               left: UiUtil.vw(0.35, 3, 6, this.viewportWidth, this.scaleFactor),
               right: UiUtil.vw(0.35, 3, 6, this.viewportWidth, this.scaleFactor)
             })
-          this.dateField('end');
+          CalendarPicker({ hintRadius: 10, selected: this.selectedEndDate })
+            .edgeAlign(CalendarAlign.END)
+            .textStyle({ color: '#ff182431', font: { size: 20, weight: FontWeight.Normal } })
+            .margin(10)
+            .onChange((value) => {
+              this.selectedEndDate = value;
+            })
 
           Text('类型')
             .fontSize(UiUtil.vh(1.55, 12, 17, this.viewportHeight, this.scaleFactor))
@@ -481,7 +469,7 @@ export struct MeasurementDataPanel {
           Select(this.typeOptions)
             .value(this.selectedType)
             .height(UiUtil.vh(4.1, 30, 42, this.viewportHeight, this.scaleFactor))
-            .width(UiUtil.vw(9.2, 74, 112, this.viewportWidth, this.scaleFactor))
+            .width(UiUtil.vw(9.2, 74, 160, this.viewportWidth, this.scaleFactor))
             .onSelect((_index: number, value?: string) => {
               this.selectedType = value ? value : ALL_FILTER_OPTION;
               this.currentPage = 1;
@@ -497,7 +485,7 @@ export struct MeasurementDataPanel {
           Select(this.flagOptions)
             .value(this.selectedFlag)
             .height(UiUtil.vh(4.1, 30, 42, this.viewportHeight, this.scaleFactor))
-            .width(UiUtil.vw(9.2, 74, 112, this.viewportWidth, this.scaleFactor))
+            .width(UiUtil.vw(9.2, 74, 160, this.viewportWidth, this.scaleFactor))
             .margin({
               left: UiUtil.vw(0.6, 4, 8, this.viewportWidth, this.scaleFactor),
               right: UiUtil.vw(0.35, 3, 6, this.viewportWidth, this.scaleFactor)
@@ -515,7 +503,6 @@ export struct MeasurementDataPanel {
             borderRadiusValue: UiUtil.vh(0.8, 5, 10, this.viewportHeight, this.scaleFactor),
             marginBottom: 0,
             onAction: () => {
-              this.activePicker = '';
               this.queryFromFirstPage();
             }
           })
@@ -523,29 +510,9 @@ export struct MeasurementDataPanel {
         .width('100%')
         .alignItems(VerticalAlign.Center)
         .justifyContent(FlexAlign.Start)
-
-        if (this.activePicker.length > 0) {
-          Row() {
-            CalendarPickerPanel({
-              selectedDate: this.activePicker === 'start' ? this.startDate : this.endDate,
-              viewportWidth: this.viewportWidth,
-              viewportHeight: this.viewportHeight,
-              scaleFactor: this.scaleFactor,
-              onDateSelected: (value: string) => {
-                if (this.activePicker === 'start') {
-                  this.startDate = value;
-                } else {
-                  this.endDate = value;
-                }
-                this.activePicker = '';
-              }
-            })
-          }
-          .width('100%')
-          .margin({ top: UiUtil.vh(0.8, 6, 10, this.viewportHeight, this.scaleFactor) })
-          .justifyContent(FlexAlign.Start)
-        }
       }
+      .width('100%')
+      .alignItems(HorizontalAlign.Start)
       .margin({ top: UiUtil.vh(2.0, 12, 22, this.viewportHeight, this.scaleFactor) })
 
       Text(`共 ${this.totalCount} 条`)

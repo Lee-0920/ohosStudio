@@ -8,9 +8,13 @@ import { CleanFlow } from '../../../Flow/CleanFlow';
 export async function cleanOperation(params: CleanType): Promise<number> {
   const startTime = DateTimeUtil.getTimestamp();
   const cleanFlow = new CleanFlow('', params);
-  cleanFlow.OnStart();
-  cleanFlow.OnProcess();
-  cleanFlow.OnStop();
+  try {
+    cleanFlow.OnStart();
+    cleanFlow.OnProcess();
+  } finally {
+    // 即使 OnProcess 抛出异常（如用户停止），也要执行 OnStop 进行结果记录与清理
+    cleanFlow.OnStop();
+  }
   hilog.info(122, 'CleanOperation', '清洗操作时间 = %{public}d', DateTimeUtil.getTimestamp() - startTime);
   return 1;
 }

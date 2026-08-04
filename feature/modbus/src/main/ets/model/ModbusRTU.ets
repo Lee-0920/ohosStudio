@@ -1,7 +1,18 @@
 // lhipstudio/modbus/src/main/ets/model/ModbusRTU.ets
 
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { ModbusRequest, ModbusResponse, ModbusExceptionCode, CommLogEntry, DataFlag, MeasureControl, DiagnosticResult } from './Types';
+import { emitter } from '@kit.BasicServicesKit';
+import {
+  ModbusRequest,
+  ModbusResponse,
+  ModbusExceptionCode,
+  CommLogEntry,
+  DataFlag,
+  MeasureControl,
+  DiagnosticResult,
+  MODBUS_CONTROL_COMMAND_EVENT,
+  ModbusControlCommandEventData
+} from './Types';
 import { DataStore } from './DataStore';
 import { REG_ADDR } from './Registers';
 import { ProtocolTable, ProtocolTableRegistry } from './ProtocolTable';
@@ -80,7 +91,7 @@ export class ModbusRTUHandler {
     if (buffer.length < 8) return null;
 
     const hexStr = this.bytesToHex(buffer);
-    Logger.info('ModbusRTU Parsing request: %s', hexStr);
+    Logger.debug('ModbusRTU Parsing request: %s', hexStr);
 
     // 验证CRC
     const receivedCrcLow = buffer[buffer.length - 2];
@@ -88,8 +99,8 @@ export class ModbusRTUHandler {
     const receivedCrc = (receivedCrcHigh << 8) | receivedCrcLow;
     const calculatedCrc = this.calculateCRC(buffer.slice(0, buffer.length - 2));
 
-    Logger.info('ModbusRTU Received CRC (high<<8|low): 0x%s', receivedCrc.toString(16));
-    Logger.info('ModbusRTU Calculated CRC: 0x%s', calculatedCrc.toString(16));
+    Logger.debug('ModbusRTU Received CRC (high<<8|low): 0x%s', receivedCrc.toString(16));
+    Logger.debug('ModbusRTU Calculated CRC: 0x%s', calculatedCrc.toString(16));
 
     // 正确比较CRC（两种字节序都要比较）
     const calculatedCrcLow = calculatedCrc & 0xFF;
@@ -123,9 +134,9 @@ export class ModbusRTUHandler {
           return null;
         }
 
-        const startAddress = this.currentTable.toInternalAddress(externalAddress);
-        const registerName = this.getRegisterName(externalAddress);
-        description = `📥 读取寄存器请求: 地址=${externalAddress}(${registerName}), 数量=${quantity}`;
+        const startAddress = this.currentTable.toInternalAddress(externalAddress, functionCode);
+        const registerName = this.getRegisterName(externalAddress, functionCode);
+        description = `📥 读取保持寄存器请求: 地址=${externalAddress}(${registerName}), 数量=${quantity}`;
 
         request = {
           slaveId: slaveId,
@@ -133,7 +144,30 @@ export class ModbusRTUHandler {
           startAddress: startAddress,
           quantity: quantity
         };
-        Logger.info('ModbusRTU Parsed read request: externalAddress=%d, internalAddress=%d, quantity=%d',
+        Logger.debug('ModbusRTU Parsed read request: externalAddress=%d, internalAddress=%d, quantity=%d',
+          externalAddress, startAddress, quantity);
+      }
+    } else if (functionCode === 0x04) { // 读输入寄存器
+      if (buffer.length >= 8) {
+        const externalAddress = (buffer[2] << 8) | buffer[3];
+        const quantity = (buffer[4] << 8) | buffer[5];
+
+        if (quantity < 1 || quantity > 125) {
+          Logger.warn('ModbusRTU Invalid quantity: %d', quantity);
+          return null;
+        }
+
+        const startAddress = this.currentTable.toInternalAddress(externalAddress, functionCode);
+        const registerName = this.getRegisterName(externalAddress, functionCode);
+        description = `📥 读取输入寄存器请求: 地址=${externalAddress}(${registerName}), 数量=${quantity}`;
+
+        request = {
+          slaveId: slaveId,
+          functionCode: functionCode,
+          startAddress: startAddress,
+          quantity: quantity
+        };
+        Logger.debug('ModbusRTU Parsed input read request: externalAddress=%d, internalAddress=%d, quantity=%d',
           externalAddress, startAddress, quantity);
       }
     } else if (functionCode === 0x06) { // 写单个寄存器
@@ -142,8 +176,8 @@ export class ModbusRTUHandler {
         const value = (buffer[4] << 8) | buffer[5];
         const dataBytes = buffer.slice(4, 6);
 
-        const startAddress = this.currentTable.toInternalAddress(externalAddress);
-        const registerName = this.getRegisterName(externalAddress);
+        const startAddress = this.currentTable.toInternalAddress(externalAddress, functionCode);
+        const registerName = this.getRegisterName(externalAddress, functionCode);
 
         if (startAddress === REG_ADDR.MEASURE_CONTROL) {
           description = `📥 测量控制请求: 地址=${externalAddress}(${registerName}), 命令码=${value}(${this.getControlCommandName(value)})`;
@@ -162,7 +196,7 @@ export class ModbusRTUHandler {
           quantity: 1,
           data: dataBytes
         };
-        Logger.info('ModbusRTU Parsed write request: externalAddress=%d, internalAddress=%d, value=%d',
+        Logger.debug('ModbusRTU Parsed write request: externalAddress=%d, internalAddress=%d, value=%d',
           externalAddress, startAddress, value);
       }
     } else if (functionCode === 0x10) { // 写多个寄存器
@@ -174,8 +208,8 @@ export class ModbusRTUHandler {
         if (buffer.length >= 7 + byteCount + 2) {
           const dataBytes = buffer.slice(7, 7 + byteCount);
 
-          const startAddress = this.currentTable.toInternalAddress(externalAddress);
-          const registerName = this.getRegisterName(externalAddress);
+          const startAddress = this.currentTable.toInternalAddress(externalAddress, functionCode);
+          const registerName = this.getRegisterName(externalAddress, functionCode);
           description = `📥 写多个寄存器请求: 地址=${externalAddress}(${registerName}), 数量=${quantity}, 字节数=${byteCount}`;
 
           if (startAddress === REG_ADDR.SYSTEM_TIME && quantity === 3) {
@@ -198,7 +232,7 @@ export class ModbusRTUHandler {
             quantity: quantity,
             data: dataBytes
           };
-          Logger.info('ModbusRTU Parsed write multiple request: externalAddress=%d, internalAddress=%d, quantity=%d',
+          Logger.debug('ModbusRTU Parsed write multiple request: externalAddress=%d, internalAddress=%d, quantity=%d',
             externalAddress, startAddress, quantity);
         }
       }
@@ -214,8 +248,8 @@ export class ModbusRTUHandler {
   }
 
   // 获取寄存器名称（address 为外部协议地址）
-  private getRegisterName(address: number): string {
-    const regInfo = this.currentTable.getRegisterInfo(address);
+  private getRegisterName(address: number, functionCode?: number): string {
+    const regInfo = this.currentTable.getRegisterInfo(address, functionCode);
     if (regInfo && regInfo.name) {
       return regInfo.name;
     }
@@ -243,6 +277,76 @@ export class ModbusRTUHandler {
     return commandMap.get(command) || `未知命令(${command})`;
   }
 
+  /**
+   * 将 Modbus 控制码映射为 OperationTaskService 的 commandId。
+   * 地址 272（测量控制）与 273（采水控制）共用此映射。
+   */
+  private getOperationCommandId(address: number, value: number): string | null {
+    if (address === REG_ADDR.WATER_COLLECT) {
+      // 采水控制：1 表示开启采水，0 表示关闭；目前统一映射为采集水样任务。
+      return value === 0 ? '' : 'collect-water-sample';
+    }
+
+    if (address !== REG_ADDR.MEASURE_CONTROL) {
+      return null;
+    }
+
+    switch (value) {
+      case MeasureControl.MEASURE_WATER:
+        return 'sample';
+      case MeasureControl.CALIBRATE:
+        return 'calibration';
+      case MeasureControl.STOP:
+        return 'stop';
+      case MeasureControl.MEASURE_RANGE_CAL:
+        return 'measure-range-calibration-solution';
+      case MeasureControl.MEASURE_ZERO_CAL:
+        return 'measure-zero-calibration-solution';
+      case MeasureControl.CLEAN_QUANT_TUBE:
+        return 'clean-quantitative-tube';
+      case MeasureControl.CLEAN_DIGESTION:
+        return 'clean-digestion-chamber';
+      case MeasureControl.DEEP_CLEAN:
+        return 'deep-cleaning';
+      case MeasureControl.CLEAN_ALL_PIPES:
+        return 'clean-all-pipelines';
+      case MeasureControl.COLLECT_WATER:
+        return 'collect-water-sample';
+      case MeasureControl.QUANT_PUMP_CAL:
+        return 'quantitative-pump-calibration';
+      case MeasureControl.ZERO_CALIBRATE:
+        return 'zero-calibration';
+      case MeasureControl.RANGE_CALIBRATE:
+        return 'range-calibration';
+      case MeasureControl.ZERO_CHECK:
+        return 'zero-check';
+      case MeasureControl.MEASURE_SPAN_CHECK:
+        return 'span-check';
+      default:
+        return null;
+    }
+  }
+
+  /**
+   * 通过 emitter 把 Modbus 控制指令转发给 entry 模块，由 entry 调用 OperationTaskService 执行。
+   */
+  private emitControlCommand(address: number, value: number): void {
+    const commandId = this.getOperationCommandId(address, value);
+    if (!commandId || commandId.length === 0) {
+      return;
+    }
+    const eventData: emitter.EventData = {
+      data: {
+        commandId: commandId,
+        sourceAddress: address,
+        value: value
+      } as ModbusControlCommandEventData
+    };
+    hilog.info(0x0000, 'ModbusRTU', 'emit control command address=%{public}d value=%{public}d commandId=%{public}s',
+      address, value, commandId);
+    emitter.emit(MODBUS_CONTROL_COMMAND_EVENT, eventData);
+  }
+
   // 获取智能诊断指令名称
   private getSmartDiagnosisCommandName(command: number): string {
     const commandMap: Map<number, string> = new Map();
@@ -268,12 +372,12 @@ export class ModbusRTUHandler {
 
   // 处理请求并生成响应
   async processRequest(request: ModbusRequest): Promise<Uint8Array | null> {
-    Logger.info('ModbusRTU Processing request: FC=%d, Addr=%d, Quantity=%d',
+    Logger.debug('ModbusRTU Processing request: FC=%d, Addr=%d, Quantity=%d',
       request.functionCode, request.startAddress, request.quantity);
 
     let response: Uint8Array | null = null;
 
-    if (request.functionCode === 0x03) {
+    if (request.functionCode === 0x03 || request.functionCode === 0x04) {
       response = await this.handleRead(request);
     } else if (request.functionCode === 0x06) {
       response = await this.handleWriteSingle(request);
@@ -285,7 +389,7 @@ export class ModbusRTUHandler {
 
     if (response) {
       const hexStr = this.bytesToHex(response);
-      Logger.info('ModbusRTU Response: %s', hexStr);
+      Logger.debug('ModbusRTU Response: %s', hexStr);
       this.addLog('SEND', hexStr, `📤 响应报文`);
     }
 
@@ -380,13 +484,14 @@ export class ModbusRTUHandler {
       responseData = this.buildTimeResponseData(year, month, day, hour, minute, second);
     }
     // 地址16: 系统状态 (UINT16, 1个寄存器)
-    else if (startAddress === REG_ADDR.SYSTEM_STATUS && quantity === 1 && status) {
-      const value = 0;
+    else if (startAddress === REG_ADDR.SYSTEM_STATUS && quantity === 1) {
+      const value = DataStore.getInstance().getUInt16(startAddress);
       responseData = this.buildUint16ResponseData(value);
+      this.addLog('SEND', '', `📤 返回系统状态: ${value}`);
     }
     // 地址17: 当前动作 (UINT16, 1个寄存器)
     else if (startAddress === REG_ADDR.CURRENT_ACTION && quantity === 1) {
-      const value = 0;
+      const value = DataStore.getInstance().getUInt16(startAddress);
       responseData = this.buildUint16ResponseData(value);
       this.addLog('SEND', '', `📤 返回当前动作: ${value}`);
     }
@@ -963,7 +1068,7 @@ export class ModbusRTUHandler {
     }
 
     const value = (data[0] << 8) | data[1];
-    Logger.info('ModbusRTU Write single register: address=%d, value=0x%s (%d)',
+    Logger.debug('ModbusRTU Write single register: address=%d, value=0x%s (%d)',
       startAddress, value.toString(16), value);
 
     // 检查寄存器是否存在且可写
@@ -1025,19 +1130,12 @@ export class ModbusRTUHandler {
     }
     // 地址272: 测量控制 (UINT16, 1个寄存器)
     else if (startAddress === REG_ADDR.MEASURE_CONTROL) {
-      /*
-      WorkerManager.getInstance().postMessage({
-        type: 'measure_control',
-        data: {
-          value: value
-        },
-        timeStamp: Date.now()
-      })
-      */
+      this.emitControlCommand(startAddress, value);
       return this.buildEchoResponse(slaveId, functionCode, startAddress, value);
     }
     // 地址273: 采水控制 (UINT16, 1个寄存器)
     else if (startAddress === REG_ADDR.WATER_COLLECT) {
+      this.emitControlCommand(startAddress, value);
       return this.buildEchoResponse(slaveId, functionCode, startAddress, value);
     }
     // 地址277: 自动测量模式 (UINT16, 1个寄存器)
@@ -1095,7 +1193,7 @@ export class ModbusRTUHandler {
       return this.handleException(slaveId, functionCode, ModbusExceptionCode.ILLEGAL_DATA_VALUE);
     }
 
-    Logger.info('ModbusRTU Write multiple registers: address=%d, quantity=%d', startAddress, quantity);
+    Logger.debug('ModbusRTU Write multiple registers: address=%d, quantity=%d', startAddress, quantity);
 
     // 逐个写入寄存器
     for (let i = 0; i < quantity; i++) {
@@ -1304,7 +1402,7 @@ export class ModbusRTUHandler {
       const minute = data[4];
       const second = data[5];
       const year = 1970 + yearOffset;
-      Logger.info('ModbusRTU System time set to: %d-%d-%d %d:%d:%d',
+      Logger.debug('ModbusRTU System time set to: %d-%d-%d %d:%d:%d',
         year, month, day, hour, minute, second);
     }
   }
@@ -1361,7 +1459,7 @@ export class ModbusRTUHandler {
     swapped[2] = bytes[0];
     swapped[3] = bytes[1];
 
-    Logger.info('ModbusRTU Float32 value: %f, original bytes: %s, swapped bytes: %s',
+    Logger.debug('ModbusRTU Float32 value: %f, original bytes: %s, swapped bytes: %s',
       value, this.bytesToHex(bytes), this.bytesToHex(swapped));
 
     return swapped;

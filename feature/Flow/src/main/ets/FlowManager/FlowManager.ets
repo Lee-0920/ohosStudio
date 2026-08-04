@@ -3,8 +3,8 @@ import { worker, MessageEvents } from '@kit.ArkTS';
 import { MeasureType } from '../Flow/MeasureFlow';
 import { CalibrateType } from '../Flow/CalibrateFlow';
 import { FlowType } from '../Flow/FlowInterface';
-import { MeasureData } from '../DataManager/DataBase';
-import { ResultManager, MeasureRecord } from 'dataservice';
+import { MeasureData, CaliData } from '../DataManager/DataBase';
+import { ResultManager, MeasureRecord, CalibrateRecord } from 'dataservice';
 
 const DOMAIN = 0x0001;
 
@@ -50,6 +50,8 @@ export class FlowManager {
   private static handleWorkerMessage(event: MessageEvents): void {
     if (event.data?.type === 'measureComplete' && event.data?.data) {
       void FlowManager.saveMeasureRecord(event.data.data as MeasureData);
+    } else if (event.data?.type === 'calibrateComplete' && event.data?.data) {
+      void FlowManager.saveCalibrateRecord(event.data.data as CaliData);
     }
   }
 
@@ -83,6 +85,58 @@ export class FlowManager {
       }
     } catch (err) {
       console.error(`FlowManager: 添加测量记录异常: ${err}`);
+    }
+  }
+
+  private static async saveCalibrateRecord(record: CaliData): Promise<void> {
+    try {
+      const resultManager = ResultManager.getInstance();
+      if (!resultManager.isReady()) {
+        console.warn('FlowManager: ResultManager 尚未初始化，无法保存校准记录');
+        return;
+      }
+      const calibrateRecord = new CalibrateRecord();
+      calibrateRecord.dateTime = record.dateTime;
+      calibrateRecord.curveK = record.curveK;
+      calibrateRecord.curveB = record.curveB;
+      calibrateRecord.R2 = record.R2;
+      calibrateRecord.calibrateTime = record.calibrateTime;
+      calibrateRecord.measureRange = record.measureRange;
+
+      calibrateRecord.point0InitAbsorbance = record.point0InitAbsorbance;
+      calibrateRecord.point0Absorbance = record.point0Absorbance;
+      calibrateRecord.point0Consistency = record.point0Consistency;
+      calibrateRecord.initReferenceAD0 = record.initReferenceAD0;
+      calibrateRecord.initMeasureAD0 = record.initMeasureAD0;
+      calibrateRecord.finalReferenceAD0 = record.finalReferenceAD0;
+      calibrateRecord.finalMeasureAD0 = record.finalMeasureAD0;
+      calibrateRecord.point0InitThermostatTemp = record.point0InitThermostatTemp;
+      calibrateRecord.point0InitEnvironmentTemp = record.point0InitEnvironmentTemp;
+      calibrateRecord.point0FinalThermostatTemp = record.point0FinalThermostatTemp;
+      calibrateRecord.point0FinalEnvironmentTemp = record.point0FinalEnvironmentTemp;
+
+      calibrateRecord.point1InitAbsorbance = record.point1InitAbsorbance;
+      calibrateRecord.point1Absorbance = record.point1Absorbance;
+      calibrateRecord.point1Consistency = record.point1Consistency;
+      calibrateRecord.initReferenceAD1 = record.initReferenceAD1;
+      calibrateRecord.initMeasureAD1 = record.initMeasureAD1;
+      calibrateRecord.finalReferenceAD1 = record.finalReferenceAD1;
+      calibrateRecord.finalMeasureAD1 = record.finalMeasureAD1;
+      calibrateRecord.point1InitThermostatTemp = record.point1InitThermostatTemp;
+      calibrateRecord.point1InitEnvironmentTemp = record.point1InitEnvironmentTemp;
+      calibrateRecord.point1FinalThermostatTemp = record.point1FinalThermostatTemp;
+      calibrateRecord.point1FinalEnvironmentTemp = record.point1FinalEnvironmentTemp;
+
+      calibrateRecord.versionString = '1, 0, 0, 2';
+
+      const id = await resultManager.addCalibrateRecord('test', calibrateRecord);
+      if (id > 0) {
+        console.info(`FlowManager: 添加校准记录成功: ${id}`);
+      } else {
+        console.error('FlowManager: 添加校准记录失败');
+      }
+    } catch (err) {
+      console.error(`FlowManager: 添加校准记录异常: ${err}`);
     }
   }
 

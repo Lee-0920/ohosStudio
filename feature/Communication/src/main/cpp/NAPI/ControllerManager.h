@@ -14,6 +14,7 @@
 #include <memory>
 #include "PT63DriveControllerPlugin/PT63DriveControllerPlugin.h"
 #include "PT63DriveControllerPlugin/PT63DriveController.h"
+#include "../CommunicationPlugin/App/CommunicationException.h"
 class PT63DriveController; // 前向声明或包含完整定义
 
 // 👇 声明：g_controller 在别处定义

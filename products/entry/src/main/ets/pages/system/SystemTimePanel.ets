@@ -12,6 +12,9 @@ export struct SystemTimePanel {
   @Prop viewportWidth: number = 1024;
   @Prop viewportHeight: number = 768;
   @Prop scaleFactor: number = 1.92;
+  private selectedDate: Date = new Date();
+  private selectedTime: Date = new Date();
+  private timeResult: TimePickerResult | undefined = undefined;
   onSyncInstrumentTime: () => void = () => {
   };
   onSetUnifiedTime: () => void = () => {
@@ -40,21 +43,6 @@ export struct SystemTimePanel {
     }
     .height(UiUtil.vh(5.0, 38, 54, this.viewportHeight, this.scaleFactor))
     .alignItems(VerticalAlign.Center)
-  }
-
-  @Builder
-  private valueInput(textValue: string, placeholderValue: string, onValueChange: (value: string) => void) {
-    SystemValueInput({
-      textValue: textValue,
-      placeholderValue: placeholderValue,
-      inputWidth: UiUtil.vw(20.0, 150, 220, this.viewportWidth, this.scaleFactor),
-      inputHeight: UiUtil.vh(3.6, 28, 38, this.viewportHeight, this.scaleFactor),
-      fontSizeValue: UiUtil.vh(1.75, 11, 15, this.viewportHeight, this.scaleFactor),
-      borderRadiusValue: UiUtil.vh(0.45, 3, 5, this.viewportHeight, this.scaleFactor),
-      onValueChange: (value: string) => {
-        onValueChange(value);
-      }
-    })
   }
 
   build() {
@@ -87,24 +75,49 @@ export struct SystemTimePanel {
           .fontSize(UiUtil.vh(1.85, 12, 16, this.viewportHeight, this.scaleFactor))
           .fontWeight(FontWeight.Bold)
           .width(UiUtil.vw(6.0, 48, 70, this.viewportWidth, this.scaleFactor))
-        this.valueInput(this.systemDate, '示例 2023-01-01', (value: string) => {
-          this.systemDate = value;
-        });
+        DatePicker({
+          start: new Date('1970-1-1'),
+          end: new Date('2100-1-1'),
+          selected: this.selectedDate
+        })
+          .lunar(false)
+          .selectedTextStyle({
+            color: '#ff050404',
+            font: {
+              size: UiUtil.vh(1.85, 12, 16, this.viewportHeight, this.scaleFactor)
+            }
+          })
+          .onDateChange((value: Date) => {
+            this.selectedDate = value;
+            console.info('select current date is: ' + value.toString());
+          })
       }
       .height(UiUtil.vh(5.4, 42, 58, this.viewportHeight, this.scaleFactor))
       .alignItems(VerticalAlign.Center)
+      .width(350)
 
       Row() {
         Text('时间')
           .fontSize(UiUtil.vh(1.85, 12, 16, this.viewportHeight, this.scaleFactor))
           .fontWeight(FontWeight.Bold)
           .width(UiUtil.vw(6.0, 48, 70, this.viewportWidth, this.scaleFactor))
-        this.valueInput(this.systemTime, '示例 08:00:00', (value: string) => {
-          this.systemTime = value;
-        });
+        TimePicker({
+          selected: this.selectedTime,
+          format: TimePickerFormat.HOUR_MINUTE_SECOND
+        })
+          .selectedTextStyle({
+            color: '#ff050404',
+            font: {
+              size: UiUtil.vh(1.85, 12, 16, this.viewportHeight, this.scaleFactor)
+            }
+          })
+          .onChange((value) => {
+            this.timeResult = value;
+          })
       }
       .height(UiUtil.vh(5.4, 42, 58, this.viewportHeight, this.scaleFactor))
       .alignItems(VerticalAlign.Center)
+      .width(350)
 
       Blank()
 
@@ -131,6 +144,10 @@ export struct SystemTimePanel {
           fontSizeValue: UiUtil.vh(1.85, 12, 16, this.viewportHeight, this.scaleFactor),
           borderRadiusValue: UiUtil.vh(0.8, 5, 10, this.viewportHeight, this.scaleFactor),
           onAction: () => {
+            this.systemDate = UiUtil.formatDate(this.selectedDate);
+            this.systemTime = `${this.timeResult?.hour}:${String(this.timeResult?.minute).padStart(2, '0')}:${String(
+              this.timeResult?.second).padStart(2, '0')}`;
+            console.info(`TLQQ, this.systemDate: ${this.systemDate}, this.systemTime: ${this.systemTime}`);
             this.onSetUnifiedTime();
           }
         })

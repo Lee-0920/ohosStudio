@@ -7,9 +7,13 @@ import { AutoPumpCheckFlow } from '../../../Flow/AutoPumpCheckFlow';
 export async function pumpCalibration(): Promise<number> {
   const startTime = DateTimeUtil.getTimestamp();
   const flow = new AutoPumpCheckFlow('');
-  flow.OnStart();
-  flow.OnProcess();
-  flow.OnStop();
-  hilog.info(122, 'CleanOperation', '清洗操作时间 = %{public}d', DateTimeUtil.getTimestamp() - startTime);
+  try {
+    flow.OnStart();
+    flow.OnProcess();
+  } finally {
+    // 即使 OnProcess 抛出异常（如用户停止），也要执行 OnStop 进行结果记录与清理
+    flow.OnStop();
+  }
+  hilog.info(122, 'CleanOperation', '定量泵校准操作时间 = %{public}d', DateTimeUtil.getTimestamp() - startTime);
   return 1;
 }

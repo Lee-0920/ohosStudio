@@ -42,6 +42,7 @@ export struct DateRangeFilterBar {
 
   build() {
     Column() {
+      this.calendarPanel()
       Row() {
         this.dateField('start');
         Text('-')
@@ -86,38 +87,28 @@ export struct DateRangeFilterBar {
       .width('100%')
       .alignItems(VerticalAlign.Center)
       .justifyContent(FlexAlign.Start)
-
-      if (this.activePicker.length > 0) {
-        Row() {
-          if (this.activePicker === 'start') {
-            CalendarPickerPanel({
-              selectedDate: this.startDate,
-              viewportWidth: this.viewportWidth,
-              viewportHeight: this.viewportHeight,
-              scaleFactor: this.scaleFactor,
-              onDateSelected: (value: string) => {
-                this.startDate = value;
-                this.activePicker = '';
-              }
-            })
-          } else {
-            CalendarPickerPanel({
-              selectedDate: this.endDate,
-              viewportWidth: this.viewportWidth,
-              viewportHeight: this.viewportHeight,
-              scaleFactor: this.scaleFactor,
-              onDateSelected: (value: string) => {
-                this.endDate = value;
-                this.activePicker = '';
-              }
-            })
-          }
-        }
-        .width('100%')
-        .margin({ top: UiUtil.vh(0.8, 6, 10, this.viewportHeight, this.scaleFactor) })
-        .justifyContent(FlexAlign.Start)
-      }
     }
     .width('100%')
+    .alignItems(HorizontalAlign.Start)
+  }
+
+  @Builder
+  private calendarPanel() {
+    if (this.activePicker.length > 0) {
+      CalendarPickerPanel({
+        selectedDate: this.activePicker === 'start' ? this.startDate : this.endDate,
+        viewportWidth: this.viewportWidth,
+        viewportHeight: this.viewportHeight,
+        scaleFactor: this.scaleFactor,
+        onDateSelected: (value: string) => {
+          if (this.activePicker === 'start') {
+            this.startDate = value;
+          } else {
+            this.endDate = value;
+          }
+          this.activePicker = '';
+        }
+      })
+    }
   }
 }

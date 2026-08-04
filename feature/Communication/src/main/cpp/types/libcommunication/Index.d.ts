@@ -203,10 +203,11 @@ declare namespace communication {
     // dncp 模块（对应 C++ 中的 dncp_xxx）
     function dncp_createPlugin(): void;
     function dncp_addSlaveNode(nodeId: number): void;
-    function dncp_initDncpStack(serialPort: string, bridgeMode: boolean, bridgeIP: string): void;
+    function dncp_initDncpStack(serialPort: string, bridgeMode: boolean, bridgeIP: string,  onStatusChanged: (pollingAddr: number, status: boolean) => void): void;
     function dncp_doProxy(): void;
     function dncp_startSignalUpload(): void;
     function dncp_stopSignalUpload(): void;
+    function dncp_isConnected(addr: number): boolean;
 
     // ==================== Pump 模块 ====================
     function pump_getTotalPumps(): number;
@@ -276,7 +277,7 @@ declare namespace communication {
     function meter_setMeteSpeed(speed: number): boolean;
     function meter_getMeteSpeed(): number;
     function meter_setMeterFinishValveMap(map: number): boolean;
-    function meter_getSingleOpticalAD(): number;
+    function meter_getSingleOpticalAD(num: number): number;
     function meter_setRopinessMeterOverValue(cnt: number): boolean;
     function meter_getRopinessMeterOverValue(): number;
     function meter_getMeterEndPointOverCount(): number;

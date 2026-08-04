@@ -669,6 +669,26 @@ export struct CalibrationCurvePanel {
       })
   }
 
+  @Builder
+  private calendarPanel() {
+    if (this.activePicker.length > 0) {
+      CalendarPickerPanel({
+        selectedDate: this.activePicker === 'start' ? this.startDate : this.endDate,
+        viewportWidth: this.viewportWidth,
+        viewportHeight: this.viewportHeight,
+        scaleFactor: this.scaleFactor,
+        onDateSelected: (value: string) => {
+          if (this.activePicker === 'start') {
+            this.startDate = value;
+          } else {
+            this.endDate = value;
+          }
+          this.activePicker = '';
+        }
+      })
+    }
+  }
+
   build() {
     Column() {
       Row() {
@@ -805,6 +825,7 @@ export struct CalibrationCurvePanel {
         .margin({ top: UiUtil.vh(0.6, 4, 8, this.viewportHeight, this.scaleFactor) })
 
       Column() {
+        this.calendarPanel()
         Row() {
           this.dateField('start');
           Text('-')
@@ -861,29 +882,9 @@ export struct CalibrationCurvePanel {
         .width('100%')
         .alignItems(VerticalAlign.Center)
         .justifyContent(FlexAlign.Start)
-
-        if (this.activePicker.length > 0) {
-          Row() {
-            CalendarPickerPanel({
-              selectedDate: this.activePicker === 'start' ? this.startDate : this.endDate,
-              viewportWidth: this.viewportWidth,
-              viewportHeight: this.viewportHeight,
-              scaleFactor: this.scaleFactor,
-              onDateSelected: (value: string) => {
-                if (this.activePicker === 'start') {
-                  this.startDate = value;
-                } else {
-                  this.endDate = value;
-                }
-                this.activePicker = '';
-              }
-            })
-          }
-          .width('100%')
-          .margin({ top: UiUtil.vh(0.8, 6, 10, this.viewportHeight, this.scaleFactor) })
-          .justifyContent(FlexAlign.Start)
-        }
       }
+      .width('100%')
+      .alignItems(HorizontalAlign.Start)
       .margin({ top: UiUtil.vh(2.0, 12, 22, this.viewportHeight, this.scaleFactor) })
 
       Row() {

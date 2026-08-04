@@ -87,35 +87,35 @@ export class DevicePollingCoordinator {
   }
 
   static async requestRefresh(topic: DeviceTopic): Promise<void> {
-    if (DevicePollingCoordinator.inFlight.get(topic)) {
-      return;
-    }
-    if (!DevicePollingCoordinator.shouldPollTopic(topic, true)) {
-      return;
-    }
-
-    DevicePollingCoordinator.inFlight.set(topic, true);
-    try {
-      if (topic === 'connection') {
-        await DevicePollingCoordinator.pollConnection();
-      } else if (topic === 'runtime') {
-        await DevicePollingCoordinator.pollRuntime();
-      } else if (topic === 'alarm') {
-        await DevicePollingCoordinator.pollAlarm();
-      } else if (topic === 'temperature') {
-        await DevicePollingCoordinator.pollTemperature();
-      } else if (topic === 'signal') {
-        await DevicePollingCoordinator.pollSignal();
-      } else {
-        await DevicePollingCoordinator.pollMeasurement();
-      }
-      DevicePollingCoordinator.recordSuccess(topic);
-    } catch (err) {
-      DevicePollingCoordinator.recordFailure(topic, JSON.stringify(err));
-    } finally {
-      DevicePollingCoordinator.inFlight.set(topic, false);
-      DevicePollingCoordinator.rescheduleAfterRefresh(topic);
-    }
+    // if (DevicePollingCoordinator.inFlight.get(topic)) {
+    //   return;
+    // }
+    // if (!DevicePollingCoordinator.shouldPollTopic(topic, true)) {
+    //   return;
+    // }
+    //
+    // DevicePollingCoordinator.inFlight.set(topic, true);
+    // try {
+    //   if (topic === 'connection') {
+    //     await DevicePollingCoordinator.pollConnection();
+    //   } else if (topic === 'runtime') {
+    //     await DevicePollingCoordinator.pollRuntime();
+    //   } else if (topic === 'alarm') {
+    //     await DevicePollingCoordinator.pollAlarm();
+    //   } else if (topic === 'temperature') {
+    //     await DevicePollingCoordinator.pollTemperature();
+    //   } else if (topic === 'signal') {
+    //     await DevicePollingCoordinator.pollSignal();
+    //   } else {
+    //     await DevicePollingCoordinator.pollMeasurement();
+    //   }
+    //   DevicePollingCoordinator.recordSuccess(topic);
+    // } catch (err) {
+    //   DevicePollingCoordinator.recordFailure(topic, JSON.stringify(err));
+    // } finally {
+    //   DevicePollingCoordinator.inFlight.set(topic, false);
+    //   DevicePollingCoordinator.rescheduleAfterRefresh(topic);
+    // }
   }
 
   static notifyConnectionSnapshotChanged(previousConnected: boolean, currentConnected: boolean): void {

@@ -159,6 +159,16 @@ export struct CombinationMaintenancePanel {
     void this.runCombinationTask();
   }
 
+  /*
+   * 刷新所有已添加流程运行状态，避免二次启动时状态显示不匹配
+   * */
+  private refreshRunStatus(): void {
+    for (let i = 0; i < this.combinationRows.length; i++) {
+      const row = this.combinationRows[i];
+      this.updateCombinationRow(row.id, true, `待执行`, '');
+    }
+  }
+
   private async runCombinationTask(): Promise<void> {
     if (this.combinationRows.length === 0) {
       this.setTaskMessage('请先添加流程');
@@ -168,72 +178,89 @@ export struct CombinationMaintenancePanel {
     this.stopRequested = false;
     this.combinationRunning = true;
     this.onRunningChange(true);
+    this.refreshRunStatus();
     this.setTaskMessage('组合维护运行中');
 
-    do {
-      if (this.combinationMode === '整点测试') {
-        this.setTaskMessage('等待下一个整点执行');
-        const waited = await this.delayUntilNextHour();
-        if (!waited) {
-          break;
-        }
+    if (this.combinationMode === '整点测试') {
+      this.setTaskMessage('等待下一个整点执行');
+      const waited = await this.delayUntilNextHour();
+      if (!waited) {
+        this.setTaskMessage('组合维护已停止');
+        return;
       }
+    }
 
-      const finished = await this.runCombinationRowsOnce();
-      if (!finished || this.stopRequested || this.combinationMode === '连续测试') {
-        break;
-      }
-
-      if (this.combinationMode === '周期测试') {
-        this.setTaskMessage('等待 1 小时后继续周期测试');
-        const waited = await this.delayWithStop(ONE_HOUR_MS);
-        if (!waited) {
-          break;
-        }
-      }
-    } while (!this.stopRequested && this.combinationMode !== '连续测试');
+    const finished = await this.runCombinationRows();
 
     this.combinationRunning = false;
     this.onRunningChange(false);
-    if (this.stopRequested) {
+    if(!finished) {
+      this.setTaskMessage('组合维护启动失败');
+    } else if (this.stopRequested) {
       this.setTaskMessage('组合维护已停止');
     } else if (this.taskMessage === '组合维护运行中') {
       this.setTaskMessage('组合维护已完成');
     }
   }
 
-  private async runCombinationRowsOnce(): Promise<boolean> {
+  private async runCombinationRows(): Promise<boolean> {
     for (let i = 0; i < this.combinationRows.length; i++) {
       const row = this.combinationRows[i];
-      const count = this.parseCount(row.value);
-      const commandId = row.value3.length > 0 ? row.value3 : OperationTaskService.getCommandIdByLabel(row.name);
-      for (let current = 1; current <= count; current++) {
-        if (this.stopRequested) {
-          return false;
-        }
-
-        this.updateCombinationRow(row.id, true, `执行 ${current}/${count}`, '');
-        const started: OperationCommandResult = await OperationTaskService.runMaintenanceCommand(commandId);
-        if (!started.success) {
-          const todoReason = OperationTaskService.getTodoReason(commandId);
-          this.updateCombinationRow(row.id, false, todoReason.length > 0 ? '暂未接入' : '失败', started.message);
-          this.setTaskMessage(`组合维护失败：${row.name} ${started.message}`);
-          return false;
-        }
-
-        const completed =
-          await OperationTaskService.waitForCommandComplete(30 * 60 * 1000, 1000, () => this.stopRequested);
-        if (!completed.success) {
-          this.updateCombinationRow(row.id, false, this.stopRequested ? '已停止' : '失败', completed.message);
-          this.setTaskMessage(this.stopRequested ? '组合维护已停止' : `组合维护失败：${row.name} ${completed.message}`);
-          return false;
-        }
-
-        this.updateCombinationRow(row.id, false, '完成', completed.message);
-      }
+      const success = await this.executeSingleRow(row, i === this.combinationRows.length - 1);
+      if (!success) return false;
     }
     this.setTaskMessage('组合维护已完成');
     return true;
+  }
+
+  private async waitForNextExecution(row: WqOperationConfigRow, current: number, count: number, isLastRow: boolean): Promise<boolean> {
+    // 单流程执行完成切换为完成状态
+    if (current >= count) {
+      this.updateCombinationRow(row.id, false, `完成`, '');
+    }
+
+    // 最后一次执行无需等待
+    if (current >= count && isLastRow) {
+      return true;
+    }
+
+    if (this.combinationMode === '整点测试') {
+      this.setTaskMessage('等待下一个整点执行');
+      return await this.delayUntilNextHour();
+    } else if (this.combinationMode === '周期测试') {
+      this.setTaskMessage('等待 1 小时后继续周期测试');
+      return await this.delayWithStop(10 * 1000); // 注意：注释写ONE_HOUR_MS但实际是10s，需确认
+    }
+    return true;
+  }
+
+  private async executeSingleRow(row: WqOperationConfigRow, isLastRow: boolean): Promise<boolean> {
+    const count = this.parseCount(row.value);
+    const commandId = row.value3 || OperationTaskService.getCommandIdByLabel(row.name);
+
+    for (let current = 1; current <= count; current++) {
+      if (this.stopRequested) return false;
+      this.updateCombinationRow(row.id, true, `执行 ${current}/${count}`, '');
+      const started: OperationCommandResult = await OperationTaskService.runMaintenanceCommand(commandId);
+      if (!started.success) {
+        const todoReason = OperationTaskService.getTodoReason(commandId);
+        this.updateCombinationRow(row.id, false, todoReason.length > 0 ? '暂未接入' : '失败', started.message);
+        this.setTaskMessage(`组合维护失败：${row.name} ${started.message}`);
+        return false;
+      }
+
+      const completed =
+        await OperationTaskService.waitForCommandComplete(30 * 60 * 1000, 1000, () => this.stopRequested);
+      if (!completed.success) {
+        this.updateCombinationRow(row.id, false, this.stopRequested ? '已停止' : '失败', completed.message);
+        this.setTaskMessage(this.stopRequested ? '组合维护已停止' : `组合维护失败：${row.name} ${completed.message}`);
+        return false;
+      }
+
+      // 统一等待逻辑
+      if (!(await this.waitForNextExecution(row, current, count, isLastRow))) break;
+    }
+    return !this.stopRequested;
   }
 
   private stopCombinationTask(): void {

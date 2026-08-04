@@ -7,6 +7,7 @@ import { RunStatusConfig, runStatus } from './RunStatus';
 import { RollDirection } from 'communication';
 import { MeasureType } from '../Flow/MeasureFlow';
 import { CleanType } from '../Flow/CleanFlow';
+import { CalibrateType } from '../Flow/CalibrateFlow';
 
 // 枚举定义
 export enum PointNum {
@@ -342,7 +343,7 @@ export const temperature: TemperatureConfig = {
   reactTempTimeout: 720,
   naturalCoolingTimeout: 720,
   digestToReactCoolingTimeout: 720,
-  naturalCoolingTempValue: 3,
+  naturalCoolingTempValue: 60,
   preheating: 60,
   cleanDigestTemp: 175,
   digestSafetyTemp: 70,
@@ -678,15 +679,24 @@ export const setting:Setting = {
 // 维护操作参数接口
 export interface MaintainOperationParams {
   maintenceTypes: MaintenceType;
-  params: MeasureType | CleanType;
+  params: MeasureType | CleanType | CalibrateType;
   runTimes: number;
 }
 
 // 管道操作参数接口
 export interface PipeOperationParams {
+  name: string,
   liquidName: string;
   dir: RollDirection;
   mode: string,
+  volume: number; // 单位建议统一为 mL 或 μL，需在注释中标明
+}
+
+// 组合操作参数接口
+export interface CombinePipeOperationParams {
+  name: string,
+  source: string;
+  dest: string;
   volume: number; // 单位建议统一为 mL 或 μL，需在注释中标明
 }
 

@@ -1,4 +1,4 @@
-import { MaintenceType, MeasureType, CleanType} from 'flow';
+import { MaintenceType, MeasureType, CleanType, CalibrateType} from 'flow';
 export interface WqMaintenanceRow {
   id: string;
   project: string;
@@ -7,7 +7,7 @@ export interface WqMaintenanceRow {
   status: string;
   result: string;
   maintenceType: MaintenceType;
-  params?: MeasureType | CleanType;
+  params?: MeasureType | CleanType | CalibrateType;
 }
 
 export interface WqOperationConfigRow {

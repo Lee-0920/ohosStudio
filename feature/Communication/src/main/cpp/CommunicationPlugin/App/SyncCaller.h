@@ -51,7 +51,6 @@ private:
     CallStatus m_respondStatus;
     // 同步调用的超时重传次数，0为不重传。
     int m_retries;
-    bool m_ready;
     
     pthread_mutex_t m_mutex;
     pthread_cond_t  m_taskWaitCondition;

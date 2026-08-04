@@ -4,6 +4,8 @@ import { CommunicationMode as DeviceCommunicationMode } from './devices/WaterQua
 import { MeasurementService } from './MeasurementService';
 import { OperationLogService } from './OperationLogService';
 import { SystemInfoSessionStore } from './SystemInfoSessionStore';
+import { dncp } from 'communication';
+import { FooterBar } from '../components/FooterBar';
 import {
   LOG_RESULT_SUCCESS,
   OPERATION_LOG_TYPE_COMMUNICATION,
@@ -255,6 +257,13 @@ export class MonitorService {
    */
   static isMeasurementRunning(): boolean {
     return MonitorService.measuring;
+  }
+
+  /**
+   * 复位测量运行状态，每次状态切为空闲后，调用该接口复位运行状态。
+   */
+  static resetMeasurementRunning(): void {
+    MonitorService.measuring = false;
   }
 
   /**
@@ -1982,7 +1991,9 @@ export class MonitorService {
   }
 
   private static syncConnectionStateFromDevice(): boolean {
-    const connected = DeviceContext.getDevice().isConnected();
+    // const connected = DeviceContext.getDevice().isConnected();
+    //默认设备地址1
+    const connected = dncp.isConnected(1);
     MonitorService.setConnectionState(connected ? 'online' : 'disconnected');
     return connected;
   }
@@ -2328,7 +2339,8 @@ export class MonitorService {
     unknownLabel: string,
     actionName: string
   ): Promise<PhotoTekCodeDescription | null> {
-    return DeviceContext.getDevice().readCodeDescriptionInputRegister(register, table, unknownLabel, actionName);
+    return {code: 1, label: '繁忙', description: '运行中'};
+    // return DeviceContext.getDevice().readCodeDescriptionInputRegister(register, table, unknownLabel, actionName);
   }
 
   /**

@@ -10,9 +10,18 @@ export { REG_ADDR, REGISTERS } from './model/Registers';
 export {
   ProtocolTable,
   Ls40ProtocolTable,
+  OffsetProtocolTable,
+  Ls10ProtocolTable,
+  Ls20ProtocolTable,
   JsProtocolTable,
   SzbaProtocolTable,
   SurfaceWaterProtocolTable,
+  ScProtocolTable,
+  XnProtocolTable,
+  GzProtocolTable,
+  JxProtocolTable,
+  XianProtocolTable,
+  YcProtocolTable,
   ProtocolTableRegistry,
   ModbusProtocolType
 } from './model/ProtocolTable';

@@ -791,17 +791,56 @@ static napi_value NapiExpectADAcquirer(napi_env env, napi_callback_info info) {
     }
 
     AcquiredResult result{};
+    try
     {
-        std::lock_guard<std::mutex> lock(g_mutex);
+//        std::lock_guard<std::mutex> lock(g_mutex);//等待事件过程中解锁,允许停止指令下发,否则停止指令无效
         if (g_controller && g_controller->IOpticalAcquire) {
             result = g_controller->IOpticalAcquire->ExpectADAcquirer(static_cast<long>(timeout));
         } else {
             OH_LOG_WARN(LOG_APP, "Controller or IOpticalAcquire is null, ExpectADAcquirer returns default AcquiredResult");
         }
-    }
+        // 直接调用已有的转换函数
+        return AcquiredResultToJsObject(env, result);
+    } catch (Communication::ExpectEventTimeoutException e) {
 
-    // 直接调用已有的转换函数
-    return AcquiredResultToJsObject(env, result);
+        char hexBuf[5]; // 4位十六进制 + '\0'
+        snprintf(hexBuf, sizeof(hexBuf), "%04X", static_cast<unsigned int>(e.m_code));
+
+        std::string msg = "Expect timeout: addr=" + e.m_addr.ToString() 
+                    + ", code=0x" + hexBuf;
+        OH_LOG_INFO(LOG_APP, "NapiExpectADAcquirer %{public}s", msg.c_str());
+        // 1. 创建 JS Error 的消息字符串
+        napi_value jsMsg;
+        napi_create_string_utf8(env, msg.c_str(), msg.length(), &jsMsg);
+        
+        // 2. 创建 JS Error 对象（第二个参数传 nullptr，稍后手动挂载标准 code）
+        napi_value jsError;
+        napi_create_error(env, nullptr, jsMsg, &jsError);
+        
+        // 3. 新增：挂载标准 Node-API 语义化错误码（供 JS 层 err.code 匹配）
+        napi_value jsCodeStr;
+        napi_create_string_utf8(env, "EXPECT_TIMEOUT", NAPI_AUTO_LENGTH, &jsCodeStr);
+        napi_set_named_property(env, jsError, "code", jsCodeStr);
+        
+        // 4. 保留原有的自定义业务数字错误码
+        napi_value jsErrorCode;
+        napi_create_int32(env, e.m_code, &jsErrorCode);
+        napi_set_named_property(env, jsError, "errorCode", jsErrorCode);
+        
+        // 5. 抛出异常并返回 nullptr
+        napi_throw(env, jsError);
+        return nullptr;
+    } catch (const std::exception& e) {
+        // 标准库异常
+        napi_throw_error(env, "NATIVE_STD_ERROR", e.what());
+        return nullptr;
+
+    } catch (...) {
+        // 未知异常兜底
+        napi_throw_error(env, "NATIVE_UNKNOWN_ERROR", 
+            "Unknown native exception in Expect");
+        return nullptr;
+    }
 }
 
 static napi_value NapiExpectLEDOnceAdjust(napi_env env, napi_callback_info info) {
@@ -828,19 +867,59 @@ static napi_value NapiExpectLEDOnceAdjust(napi_env env, napi_callback_info info)
     }
 
     AdjustResult result = AdjustResult::Failed; // 默认值
+    try
     {
-        std::lock_guard<std::mutex> lock(g_mutex);
+//        std::lock_guard<std::mutex> lock(g_mutex);//等待事件过程中解锁,允许停止指令下发,否则停止指令无效
         if (g_controller && g_controller->IOpticalAcquire) {
             result = g_controller->IOpticalAcquire->ExpectLEDOnceAdjust(static_cast<long>(timeout));
         } else {
             OH_LOG_WARN(LOG_APP, "Controller or IOpticalAcquire is null, ExpectLEDOnceAdjust returns Failed");
         }
-    }
+        
+        // 将 enum class 转为整数返回给 JS
+        napi_value jsResult;
+        napi_create_int32(env, static_cast<int32_t>(result), &jsResult);
+        return jsResult;
+    } catch (Communication::ExpectEventTimeoutException e) {
 
-    // 将 enum class 转为整数返回给 JS
-    napi_value jsResult;
-    napi_create_int32(env, static_cast<int32_t>(result), &jsResult);
-    return jsResult;
+        char hexBuf[5]; // 4位十六进制 + '\0'
+        snprintf(hexBuf, sizeof(hexBuf), "%04X", static_cast<unsigned int>(e.m_code));
+
+        std::string msg = "Expect timeout: addr=" + e.m_addr.ToString() 
+                    + ", code=0x" + hexBuf;
+        OH_LOG_INFO(LOG_APP, "NapiExpectLEDOnceAdjust %{public}s", msg.c_str());
+        // 1. 创建 JS Error 的消息字符串
+        napi_value jsMsg;
+        napi_create_string_utf8(env, msg.c_str(), msg.length(), &jsMsg);
+        
+        // 2. 创建 JS Error 对象（第二个参数传 nullptr，稍后手动挂载标准 code）
+        napi_value jsError;
+        napi_create_error(env, nullptr, jsMsg, &jsError);
+        
+        // 3. 新增：挂载标准 Node-API 语义化错误码（供 JS 层 err.code 匹配）
+        napi_value jsCodeStr;
+        napi_create_string_utf8(env, "EXPECT_TIMEOUT", NAPI_AUTO_LENGTH, &jsCodeStr);
+        napi_set_named_property(env, jsError, "code", jsCodeStr);
+        
+        // 4. 保留原有的自定义业务数字错误码
+        napi_value jsErrorCode;
+        napi_create_int32(env, e.m_code, &jsErrorCode);
+        napi_set_named_property(env, jsError, "errorCode", jsErrorCode);
+        
+        // 5. 抛出异常并返回 nullptr
+        napi_throw(env, jsError);
+        return nullptr;
+    } catch (const std::exception& e) {
+        // 标准库异常
+        napi_throw_error(env, "NATIVE_STD_ERROR", e.what());
+        return nullptr;
+
+    } catch (...) {
+        // 未知异常兜底
+        napi_throw_error(env, "NATIVE_UNKNOWN_ERROR", 
+            "Unknown native exception in Expect");
+        return nullptr;
+    }
 }
 
 static napi_value NapiExpectStaticADControlResult(napi_env env, napi_callback_info info) {
@@ -867,19 +946,58 @@ static napi_value NapiExpectStaticADControlResult(napi_env env, napi_callback_in
     }
 
     StaticADControlResult result = StaticADControlResult::Unfinished; // 默认值
+    try
     {
-        std::lock_guard<std::mutex> lock(g_mutex);
+//        std::lock_guard<std::mutex> lock(g_mutex);//等待事件过程中解锁,允许停止指令下发,否则停止指令无效
         if (g_controller && g_controller->IOpticalAcquire) {
             result = g_controller->IOpticalAcquire->ExpectStaticADControlResult(static_cast<long>(timeout));
         } else {
             OH_LOG_WARN(LOG_APP, "Controller or IOpticalAcquire is null, returning Unfinished");
         }
-    }
+        // enum class → int32 → JS number
+        napi_value jsResult;
+        napi_create_int32(env, static_cast<int32_t>(result), &jsResult);
+        return jsResult;
+    } catch (Communication::ExpectEventTimeoutException e) {
 
-    // enum class → int32 → JS number
-    napi_value jsResult;
-    napi_create_int32(env, static_cast<int32_t>(result), &jsResult);
-    return jsResult;
+        char hexBuf[5]; // 4位十六进制 + '\0'
+        snprintf(hexBuf, sizeof(hexBuf), "%04X", static_cast<unsigned int>(e.m_code));
+
+        std::string msg = "Expect timeout: addr=" + e.m_addr.ToString() 
+                    + ", code=0x" + hexBuf;
+        OH_LOG_INFO(LOG_APP, "NapiExpectStaticADControlResult %{public}s", msg.c_str());
+        // 1. 创建 JS Error 的消息字符串
+        napi_value jsMsg;
+        napi_create_string_utf8(env, msg.c_str(), msg.length(), &jsMsg);
+        
+        // 2. 创建 JS Error 对象（第二个参数传 nullptr，稍后手动挂载标准 code）
+        napi_value jsError;
+        napi_create_error(env, nullptr, jsMsg, &jsError);
+        
+        // 3. 新增：挂载标准 Node-API 语义化错误码（供 JS 层 err.code 匹配）
+        napi_value jsCodeStr;
+        napi_create_string_utf8(env, "EXPECT_TIMEOUT", NAPI_AUTO_LENGTH, &jsCodeStr);
+        napi_set_named_property(env, jsError, "code", jsCodeStr);
+        
+        // 4. 保留原有的自定义业务数字错误码
+        napi_value jsErrorCode;
+        napi_create_int32(env, e.m_code, &jsErrorCode);
+        napi_set_named_property(env, jsError, "errorCode", jsErrorCode);
+        
+        // 5. 抛出异常并返回 nullptr
+        napi_throw(env, jsError);
+        return nullptr;
+    } catch (const std::exception& e) {
+        // 标准库异常
+        napi_throw_error(env, "NATIVE_STD_ERROR", e.what());
+        return nullptr;
+
+    } catch (...) {
+        // 未知异常兜底
+        napi_throw_error(env, "NATIVE_UNKNOWN_ERROR", 
+            "Unknown native exception in Expect");
+        return nullptr;
+    }
 }
 
 void RegisterOpticalModule(napi_env env, napi_value exports) {

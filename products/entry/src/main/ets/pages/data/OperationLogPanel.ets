@@ -4,6 +4,7 @@ import { readAllLogs, clearLogFile, deleteLogFile, getAllLogFilesInfo, LogFileIn
 import { UiUtil } from 'base';
 
 interface LogEntry {
+  id: number;
   dateTime: string;
   level: string;
   content: string;
@@ -76,12 +77,13 @@ export struct OperationLogPanel {
       const endStr = this.endDate;
 
       const filtered: LogEntry[] = [];
+      let entryId = 0;
       for (const line of lines) {
         const trimmed = line.trim();
         if (trimmed.length === 0) {
           continue;
         }
-        const entry = this.parseLogLine(trimmed);
+        const entry = this.parseLogLine(trimmed, entryId++);
         if (!entry) {
           continue;
         }
@@ -91,7 +93,7 @@ export struct OperationLogPanel {
         }
       }
 
-      filtered.sort((a, b) => b.dateTime.localeCompare(a.dateTime));
+      filtered.sort((a, b) => b.dateTime.localeCompare(a.dateTime) || b.id - a.id);
 
       this.totalCount = filtered.length;
       this.totalPages = Math.max(1, Math.ceil(this.totalCount / this.pageSize));
@@ -115,7 +117,7 @@ export struct OperationLogPanel {
     }
   }
 
-  private parseLogLine(line: string): LogEntry | null {
+  private parseLogLine(line: string, id: number): LogEntry | null {
     const regex = /^(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s+\[(\w+)\]:\s*(.*)$/;
     const match = line.match(regex);
     if (!match) {
@@ -127,7 +129,7 @@ export struct OperationLogPanel {
     if (/^\*+$/.test(content.trim())) {
       return null;
     }
-    return { dateTime, level, content };
+    return { id, dateTime, level, content };
   }
 
   private getEmptyRowIndexes(): number[] {
@@ -280,7 +282,7 @@ export struct OperationLogPanel {
             }
             .height(UiUtil.vh(4.5, 34, 50, this.viewportHeight, this.scaleFactor))
             .border({ width: UiUtil.vh(0.1, 1, 2, this.viewportHeight, this.scaleFactor), color: '#E5E5E5' })
-          }, (item: LogEntry) => `${item.dateTime}-${item.level}-${item.content}`)
+          }, (item: LogEntry) => item.id.toString())
 
           ForEach(this.getEmptyRowIndexes(), (idx: number) => {
             Row() {

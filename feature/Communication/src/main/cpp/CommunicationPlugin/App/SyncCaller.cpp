@@ -15,6 +15,7 @@
 #include "CommunicationException.h"
 //#include "System/Exception.h"
 #include "CommunicationPlugin/Dscp/DscpStatus.h"
+#include <asm-generic/errno.h>
 // #include <QDateTime>
 // #include <QDebug>
 #include "hilog/log.h"
@@ -41,10 +42,8 @@ SyncCaller::SyncCaller()
     this->m_retries = 3;
     this->m_respond = nullptr;
     this->m_respondStatus = CallStatus::OK;
-    this->m_ready = false;
     pthread_mutex_init(&m_mutex, nullptr);
     pthread_cond_init(&m_taskWaitCondition, nullptr);
-    OH_LOG_INFO(LOG_APP, "SendWithStatus mutex init");
 }
 
 /**
@@ -58,10 +57,8 @@ SyncCaller::SyncCaller(int retries)
     this->m_retries = retries;
     this->m_respond = nullptr;
     this->m_respondStatus = CallStatus::OK;
-    this->m_ready = false;
     pthread_mutex_init(&m_mutex, nullptr);
     pthread_cond_init(&m_taskWaitCondition, nullptr);
-    OH_LOG_INFO(LOG_APP, "SendWithStatus mutex init");
 }
 
 SyncCaller::~SyncCaller()
@@ -100,64 +97,57 @@ DscpRespPtr SyncCaller:: Send(DscpCmdPtr cmd)
     DscpRespPtr resp = nullptr;
 
     long timeout = this->sum(m_retries + 1) * AsyncScheduler::Instance()->GetTimeout() + 500;
-    OH_LOG_INFO(LOG_APP, "Send");
+    OH_LOG_DEBUG(LOG_APP, "Send");
     AsyncTaskPtr task(new AsyncTask(this, m_retries));
     task->AddCall(AsyncCallPtr(new AsyncCall(cmd)));
-    OH_LOG_INFO(LOG_APP, "SendWithStatus AddCall");
-//    m_mutex.lock();
+    OH_LOG_DEBUG(LOG_APP, "SendWithStatus AddCall");
     pthread_mutex_lock(&m_mutex);
     AsyncScheduler::Instance()->Execute(task);
 
-//    long t1 = QDateTime::currentDateTime().toMSecsSinceEpoch();
-    OH_LOG_INFO(LOG_APP, "Send ready %{public}d",m_ready);
-    int t1 = 0;
-    while(!m_ready)
-    {
-         pthread_cond_wait(&m_taskWaitCondition, &m_mutex);
-    }    
+    struct timespec absTimeout;
+    clock_gettime(CLOCK_REALTIME, &absTimeout);
+    absTimeout.tv_sec += timeout / 1000;
+    absTimeout.tv_nsec += (timeout % 1000) * 1000000L;
+    if (absTimeout.tv_nsec >= 1000000000L) {
+        absTimeout.tv_sec += 1;
+        absTimeout.tv_nsec -= 1000000000L;
+    }
+    
+    // timedwait 本身就会在被 signal 唤醒后立即返回（返回值为0）
+    // 超时则返回 ETIMEDOUT（非0）
+    int waitResult = pthread_cond_timedwait(&m_taskWaitCondition, &m_mutex, &absTimeout); 
+    
    OH_LOG_INFO(LOG_APP, "SendWithStatus waitcondition");
-//    if(m_taskWaitCondition.wait(&m_mutex,timeout) == true)
+    if(waitResult != ETIMEDOUT)
     {
         if (m_respondStatus == CallStatus::OK)
         {
             resp = m_respond;
             m_respond.reset();
-//            m_mutex.unlock();
             pthread_mutex_unlock(&m_mutex);
         }
         else if (m_respondStatus == CallStatus::Timeout)
         {
-//            logger->debug("SyncCaller Respond Timeout {addr = %s, code = %X}",
-//                          cmd->addr.ToString().c_str(),
-//                          cmd->code);
             OH_LOG_DEBUG(LOG_APP, "SyncCaller Respond Timeout {addr = %{public}s, code = %{public}X}",
                           cmd->addr.ToString().c_str(),
                           cmd->code);
-
-//          m_mutex.unlock();
             pthread_mutex_unlock(&m_mutex); 
-          throw CommandTimeoutException(cmd->addr,cmd->code);
+            throw CommandTimeoutException(cmd->addr,cmd->code);
         }
     }
-//    else
-//    {
-////        long to= QDateTime::currentDateTime().toMSecsSinceEpoch() - t1;
-//          int to = 0;
-//
-////        logger->debug("SyncCaller Wait Timeou {addr = %s, code = %X, TO = %ld ms}",
-////                      cmd->addr.ToString().c_str(),
-////                      cmd->code,
-////                      to);
-//        OH_LOG_DEBUG(LOG_APP, "SyncCaller Wait Timeou {addr = %{public}s, code = %{public}X, TO = %{public}ld ms}",
-//                      cmd->addr.ToString().c_str(),
-//                      cmd->code,
-//                      to);
-//
-//        task->Deregister();
-////        m_mutex.unlock();
-//        pthread_mutex_unlock(&m_mutex);
-//        throw CommandTimeoutException(cmd->addr,cmd->code);
-//    }
+    else
+    {
+        int to = (long long)absTimeout.tv_sec * 1000 
+                   + absTimeout.tv_nsec / 1000000;
+        OH_LOG_DEBUG(LOG_APP, "SyncCaller Wait Timeou {addr = %{public}s, code = %{public}X, TO = %{public}ld ms}",
+                      cmd->addr.ToString().c_str(),
+                      cmd->code,
+                      to);
+
+        task->Deregister();
+        pthread_mutex_unlock(&m_mutex);
+        throw CommandTimeoutException(cmd->addr,cmd->code);
+    }
 
     return resp;
 }
@@ -205,65 +195,53 @@ int SyncCaller::SendWithStatus(DscpCmdPtr cmd)
 {
     Uint16 status = DscpStatus::Timeout;
     long timeout = this->sum(m_retries + 1) * AsyncScheduler::Instance()->GetTimeout() + 500;
-    OH_LOG_INFO(LOG_APP, "SendWithStatus");
     AsyncTaskPtr task(new AsyncTask(this, m_retries));
     task->AddCall(AsyncCallPtr(new AsyncCall(cmd)));
-    OH_LOG_INFO(LOG_APP, "SendWithStatus AddCall");
-//    m_mutex.lock();
     pthread_mutex_lock(&m_mutex);
     AsyncScheduler::Instance()->Execute(task);
-    OH_LOG_INFO(LOG_APP, "SendWithStatus Execute");
 
-//    long t1 = QDateTime::currentDateTime().toMSecsSinceEpoch();
-    OH_LOG_INFO(LOG_APP, "SendWithStatus ready %{public}d",m_ready);
-    int t1 = 0;
-    while(!m_ready)
-    {
-         pthread_cond_wait(&m_taskWaitCondition, &m_mutex);
-    } 
-    OH_LOG_INFO(LOG_APP, "SendWithStatus waitcondition");
-//    if(m_taskWaitCondition.wait(&m_mutex,timeout))
+    struct timespec absTimeout;
+    clock_gettime(CLOCK_REALTIME, &absTimeout);
+    absTimeout.tv_sec += timeout / 1000;
+    absTimeout.tv_nsec += (timeout % 1000) * 1000000L;
+    if (absTimeout.tv_nsec >= 1000000000L) {
+        absTimeout.tv_sec += 1;
+        absTimeout.tv_nsec -= 1000000000L;
+    }
+    
+    // timedwait 本身就会在被 signal 唤醒后立即返回（返回值为0）
+    // 超时则返回 ETIMEDOUT（非0）
+    int waitResult = pthread_cond_timedwait(&m_taskWaitCondition, &m_mutex, &absTimeout);
+    
+    if(waitResult != ETIMEDOUT)
     {
         if (m_respondStatus == CallStatus::OK)
         {
-        OH_LOG_INFO(LOG_APP, "SendWithStatus OK");
             status = ((DscpStatus*)m_respond.get())->GetStatus();
-//            m_mutex.unlock();
             pthread_mutex_unlock(&m_mutex);
         }
         else if (m_respondStatus == CallStatus::Timeout)
         {
-//            logger->debug("SyncCaller Respond Timeout {addr = %s, code = %X}",
-//                          cmd->addr.ToString().c_str(),
-//                          cmd->code);
-        OH_LOG_INFO(LOG_APP, "SendWithStatus Timeout");
-        OH_LOG_INFO(LOG_APP, "SyncCaller Respond Timeout {addr = %{public}s, code = %{public}X}",
-                          cmd->addr.ToString().c_str(),
-                          cmd->code);
-
-//          m_mutex.unlock();
+            OH_LOG_INFO(LOG_APP, "SendWithStatus Timeout");
+            OH_LOG_INFO(LOG_APP, "SyncCaller Respond Timeout {addr = %{public}s, code = %{public}X}",
+                              cmd->addr.ToString().c_str(),
+                              cmd->code);
             pthread_mutex_unlock(&m_mutex);
-//          throw CommandTimeoutException(cmd->addr,cmd->code);
+            throw CommandTimeoutException(cmd->addr,cmd->code);
         }
     }
-//    else
-//    {
-////        long to= QDateTime::currentDateTime().toMSecsSinceEpoch() - t1;
-//        int to = 0;
-////        logger->debug("SyncCaller Wait Timeou {addr = %s, code = %X, TO = %ld ms}",
-////                      cmd->addr.ToString().c_str(),
-////                      cmd->code,
-////                      to);
-//        OH_LOG_DEBUG(LOG_APP, "SyncCaller Wait Timeou {addr = %{public}s, code = %{public}X}, TO = %ld ms",
-//                          cmd->addr.ToString().c_str(),
-//                          cmd->code,
-//                          to);
-//
-//        task->Deregister();
-////        m_mutex.unlock();
-//        pthread_mutex_unlock(&m_mutex);
-//        throw CommandTimeoutException(cmd->addr,cmd->code);
-//    }
+    else
+    {
+        int to = (long long)absTimeout.tv_sec * 1000 
+                   + absTimeout.tv_nsec / 1000000;
+        OH_LOG_ERROR(LOG_APP, "SyncCaller Wait Timeou {addr = %{public}s, code = %{public}X}, TO = %ld ms",
+                          cmd->addr.ToString().c_str(),
+                          cmd->code,
+                          to);
+        task->Deregister();
+        pthread_mutex_unlock(&m_mutex);
+        throw CommandTimeoutException(cmd->addr,cmd->code);
+    }
 
     return status;
 }
@@ -287,34 +265,27 @@ void SyncCaller::OnStart(AsyncTask *task)
 bool SyncCaller::OnRespond(AsyncTask *task, AsyncCall *call, CallStatus status)
 {
     (void)task;
-//    m_mutex.lock();
-    OH_LOG_INFO(LOG_APP, "SendWithStatus OnRespond");
+    OH_LOG_DEBUG(LOG_APP, "SendWithStatus OnRespond");
     pthread_mutex_lock(&m_mutex);
 
     if (status == CallStatus::OK)
     {
         m_respondStatus = CallStatus::OK;
         this->m_respond = call->GetRespond();
-        m_ready = true;
-//        m_taskWaitCondition.wakeAll();
         pthread_cond_signal(&m_taskWaitCondition);      // 唤醒等待者
-        OH_LOG_INFO(LOG_APP, "SendWithStatus OnRespond Wakeup Ok");
+        OH_LOG_DEBUG(LOG_APP, "SendWithStatus OnRespond Wakeup Ok");
     }
     else if (status == CallStatus::Timeout)
     {
         m_respondStatus = CallStatus::Timeout;
-        m_ready = true;
-//        m_taskWaitCondition.wakeAll();
         pthread_cond_signal(&m_taskWaitCondition);      // 唤醒等待者
         OH_LOG_INFO(LOG_APP, "SendWithStatus OnRespond Wakeup timeout");
     }
     else
     {
-//        logger->debug("no OnRespond Status type");
         OH_LOG_DEBUG(LOG_APP, "no OnRespond Status type");
     }
 
-//    m_mutex.unlock();
     pthread_mutex_unlock(&m_mutex);
 
     return true;

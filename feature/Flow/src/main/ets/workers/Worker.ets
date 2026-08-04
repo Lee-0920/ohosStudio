@@ -1,6 +1,6 @@
 import { ErrorEvent, MessageEvents, ThreadWorkerGlobalScope, worker } from '@kit.ArkTS';
 import { ProcessManager } from '../util/taskpool/task/ProcessManager';
-import { MaintainOperationParams, PipeOperationParams, HardwareOperationParams } from "../Setting/Setting";
+import { MaintainOperationParams, PipeOperationParams, HardwareOperationParams, CombinePipeOperationParams } from "../Setting/Setting";
 
 
 
@@ -20,6 +20,13 @@ interface PipeOperatorMessage {
   type: string;
   timeStamp: number;
   data: PipeOperationParams;
+}
+
+// 1. 定义 Worker 组合操作消息的完整结构接口
+interface CombinePipeOperatorMessage {
+  type: string;
+  timeStamp: number;
+  data: CombinePipeOperationParams;
 }
 
 // 1. 定义 Worker 硬件测试消息的完整结构接口
@@ -55,7 +62,26 @@ workerPort.onmessage = async (event: MessageEvents) => {
       // 3. 显式声明类型并解构所需参数
       const paramsMt = payloadMt as MaintainOperationParams;
       console.info(`TLQQ, 解析维护-测量操作参数: maintenceTypes=${paramsMt.maintenceTypes}, params=${paramsMt.params}, runTimes=${paramsMt.runTimes}`);
-      await ProcessManager.testProcess(workerPort, paramsMt);
+      // await ProcessManager.testProcess(workerPort, paramsMt);
+      await ProcessManager.measureProcess(workerPort, paramsMt);
+      break;
+    case 'startCalibrate':
+      console.info(`Worker received maintenance message: ${JSON.stringify(event.data)}`);
+
+      // 2. 显式断言为已知接口，消除 any/unknown
+      const messageCal = event.data as MaintenanceOperatorMessage;
+      const payloadCal: MaintainOperationParams = messageCal.data;
+
+      // 2. 安全校验（防止 UI 传参结构异常导致 Worker 崩溃）
+      if (!payloadCal) {
+        console.error(`Worker: Invalid maintenance payload: ${JSON.stringify(payloadCal)}`);
+        break;
+      }
+
+      // 3. 显式声明类型并解构所需参数
+      const paramsCal = payloadCal as MaintainOperationParams;
+      console.info(`TLQQ, 解析维护-校准操作参数: maintenceTypes=${paramsCal.maintenceTypes}, params=${paramsCal.params}, runTimes=${paramsCal.runTimes}`);
+      await ProcessManager.calibrateProcess(workerPort, paramsCal);
       break;
     case 'stop':
       await ProcessManager.stopProcess(workerPort);
@@ -95,6 +121,24 @@ workerPort.onmessage = async (event: MessageEvents) => {
       const params = payload as PipeOperationParams;
       console.info(`TLQQ, 解析管道操作参数: liquidType=${params.liquidName}, dir=${params.dir}, volume=${params.volume}, mode=${params.mode}`);
       await ProcessManager.pipeOperationProcess(workerPort, params);
+      break;
+    case 'combinePipeOperator':
+      console.info(`Worker received combinePipeOperator message: ${JSON.stringify(event.data)}`);
+
+      // 2. 显式断言为已知接口，消除 any/unknown
+      const messageCp = event.data as CombinePipeOperatorMessage;
+      const payloadCp: CombinePipeOperationParams = messageCp.data;
+
+      // 2. 安全校验（防止 UI 传参结构异常导致 Worker 崩溃）
+      if (!payloadCp || typeof payloadCp.source !== 'string' || typeof payloadCp.volume !== 'number') {
+        console.error(`Worker: Invalid pipeOperator payload: ${JSON.stringify(payloadCp)}`);
+        break;
+      }
+
+      // 3. 显式声明类型并解构所需参数
+      const paramsCp = payloadCp as CombinePipeOperationParams;
+      console.info(`TLQQ, 解析组合管道操作参数: source=${paramsCp.source}, dest=${paramsCp.dest}, volume=${paramsCp.volume}`);
+      await ProcessManager.combinePipeOperationProcess(workerPort, paramsCp);
       break;
     case 'hardwareOperation':
       console.info(`Worker received haraware message: ${JSON.stringify(event.data)}`);

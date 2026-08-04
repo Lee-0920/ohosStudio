@@ -297,7 +297,7 @@ void PT63DriveController::OnReceive(DscpEventPtr event)
 
 void PT63DriveController::StopSignalUpload()
 {
-//    if (this->GetConnectStatus())
+    if (this->GetConnectStatus())
     {
         //重置光学定量AD上传周期
         try
@@ -430,7 +430,7 @@ void PT63DriveController::SetBoxFanEnable(int index, int mode, float temp)
 
 void PT63DriveController::StartSignalUpload()
 {
-//    if (this->GetConnectStatus())
+    if (this->GetConnectStatus())
     {
         //重置光学定量AD上传周期
         try

@@ -2,6 +2,7 @@
 
 import { DataType, TimeData, DataFlag, SystemStatus, CurrentAction } from './Types';
 import { ProtocolTable, ProtocolTableRegistry } from './ProtocolTable';
+import { REGISTERS } from './Registers';
 import { util } from '@kit.ArkTS';
 
 // 数据存储单例
@@ -32,8 +33,8 @@ export class DataStore {
 
   // 写入寄存器值（address 为内部 LS4.0 地址）
   writeRegister(address: number, data: Uint8Array): boolean {
-    // 检查是否可写
-    const regInfo = this.currentTable.getRegisterInfo(address);
+    // 检查是否可写（内部地址空间始终是 LS4.0，直接查 REGISTERS）
+    const regInfo = REGISTERS.get(address);
     if (regInfo && regInfo.access === 'R') {
       return false;
     }
@@ -57,7 +58,7 @@ export class DataStore {
 
   // 获取寄存器信息（address 为内部 LS4.0 地址）
   getRegisterInfo(address: number) {
-    return this.currentTable.getRegisterInfo(address);
+    return REGISTERS.get(address);
   }
   // 设置FLOAT32值 (大端序)
   setFloat32(address: number, value: number): void {
@@ -80,6 +81,24 @@ export class DataStore {
       bytes.set(low, 2);
       const view = new DataView(buffer);
       return view.getFloat32(0, false);
+    }
+    return 0;
+  }
+
+  // 设置 UINT16 值（内部使用，允许写入只读寄存器，如系统状态、当前动作）
+  setUInt16(address: number, value: number): void {
+    const buffer = new ArrayBuffer(2);
+    const view = new DataView(buffer);
+    view.setUint16(0, value, false);
+    this.registerData.set(address, new Uint8Array(buffer));
+  }
+
+  // 获取 UINT16 值
+  getUInt16(address: number): number {
+    const data = this.registerData.get(address);
+    if (data && data.length >= 2) {
+      const view = new DataView(data.buffer);
+      return view.getUint16(0, false);
     }
     return 0;
   }

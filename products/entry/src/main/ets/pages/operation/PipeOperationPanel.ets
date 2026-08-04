@@ -51,6 +51,7 @@ export struct PipeOperationPanel {
     const dir = dirMap[row.value3];
 
     return {
+      name: row.name,
       liquidName: row.value2,
       dir,
       mode: this.selectedPipeMode,
@@ -68,6 +69,7 @@ export struct PipeOperationPanel {
     WorkerManager.getInstance().postMessage({
       type: postText,
       data: {
+        name: params.name,
         liquidName: params.liquidName,
         dir: params.dir,
         volume: params.volume,
@@ -76,7 +78,7 @@ export struct PipeOperationPanel {
       timeStamp: Date.now()
     });
     // TODO: 当前协议只暴露了管道动作码读取，尚无“管道操作 + 体积 + 定量方式”的可写 API。
-    const message = `${rowName} 暂未接入设备控制`;
+    const message = `${rowName}`;
     this.operationMessage = message;
     this.onMessageChange(message);
   }

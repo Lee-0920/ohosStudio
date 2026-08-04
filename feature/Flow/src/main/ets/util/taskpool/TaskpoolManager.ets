@@ -1,17 +1,48 @@
 import taskpool from '@ohos.taskpool';
 import { Task } from './model/TaskModel';
-import { ThreadWorkerGlobalScope } from '@kit.ArkTS';
-import { createEmptyMeasureResult, MeasureResult, Measurer } from '../../Flow/Measurer';
-import { MeasureFlow, MeasureType, MeasureConfig } from '../../Flow/MeasureFlow'
-import { PipeOperationParams, MaintainOperationParams, HardwareOperationParams } from "../../Setting/Setting";
-import { Operator } from '../../Flow/Operator';
-import { CleanType } from '../../../../../Index';
+import { ThreadWorkerGlobalScope, worker, MessageEvents, ErrorEvent } from '@kit.ArkTS';
+import { MeasureType, MeasureConfig } from '../../Flow/MeasureFlow'
+import { PipeOperationParams, MaintainOperationParams, HardwareOperationParams, CombinePipeOperationParams } from "../../Setting/Setting";
+import { CleanType, CalibrateType } from '../../../../../Index';
+import { MeasureData, CaliData } from '../../DataManager/DataBase';
 
 
 // ✅ 1. 定义统一的任务队列节点，将 Task 与 Payload 原子绑定
 interface TaskQueueItem {
   task: Task;
-  payload?: PipeOperationParams | MaintainOperationParams | MeasureConfig | CleanType | HardwareOperationParams;
+  payload?: PipeOperationParams | MaintainOperationParams | MeasureConfig | CleanType | HardwareOperationParams | MeasureType | CalibrateType | CombinePipeOperationParams;
+}
+
+// 所有 @Concurrent 任务统一返回此结构
+export interface TaskResultWrapper {
+  type: 'measure' | 'calibrate' | 'other';
+  data: MeasureData | CaliData | object | null;
+}
+
+// 用户主动取消的专用异常类
+export class UserCancelledError extends Error {
+  constructor() {
+    super('User cancelled operation');
+    this.name = 'UserCancelledError';
+  }
+}
+
+interface TaskPoolCancelErrorData {
+  error: string;
+  result?: object;
+}
+
+interface BusinessErrorLike {
+  name: string;
+  code?: number;
+  data?: TaskPoolCancelErrorData;
+}
+/*
+* 停止事件接口
+ */
+export interface MessageStopEvent {
+  type: string;
+  info: string;
 }
 
 /**
@@ -27,11 +58,8 @@ export class TaskpoolManager {
   // private endRunTime: Date | undefined = undefined;
   private taskQueue: TaskQueueItem[] = [];
   private isStopping: Boolean = false;
-  private enableResultHandle: boolean = false;
-  private measureResult: MeasureResult | undefined = undefined;
-  private measureFlow: MeasureFlow | undefined = undefined;
   private measureFlowName: String = '';
-  private currentMeasureConfig: MeasureConfig | undefined= undefined;
+  private stopWorker: worker.ThreadWorker | null = null;
 
   static getInstance(): TaskpoolManager {
     if (!TaskpoolManager.manager) {
@@ -48,12 +76,10 @@ export class TaskpoolManager {
     this.startRunTime = undefined;
     this.endRunTime = undefined;
     this.currentRunTime = undefined;
-    this.currentMeasureConfig = undefined;
-    this.measureFlow = undefined;
-    this.enableResultHandle = false;
   }
 
-  addTask(task: Task, payload?: PipeOperationParams | MaintainOperationParams | MeasureConfig | CleanType | HardwareOperationParams) {
+  addTask(task: Task, payload?: PipeOperationParams | MaintainOperationParams | MeasureConfig |
+        CleanType | HardwareOperationParams | MeasureType | CalibrateType | CombinePipeOperationParams) {
     console.info(`TLQQ, taskpool添加任务: ${task.getTaskName()}`);
     if (payload !== undefined) {
       // 有参任务：序列化并绑定参数
@@ -66,53 +92,122 @@ export class TaskpoolManager {
   stopTask() {
     console.info('TLQQ, StopTask');
     this.isStopping = true;
-    this.enableResultHandle = false;
     this.taskQueue = [];
     taskpool.cancel(this.currentTask);
-    Operator.getInstance().Stop();
+    this.triggerStop();
   }
 
-  enableMeasureFlow(arg: MaintainOperationParams){
-    const measureType = arg.params as MeasureType;
-    switch (arg.params){
-      case MeasureType.Sample:
-        this.measureFlowName = 'MeasureSample';
-        break;
-      case MeasureType.Blank:
-        this.measureFlowName = 'MeasureBlank';
-        break;
-      case MeasureType.Standard:
-        this.measureFlowName = 'MeasureStandard';
-        break;
-      case MeasureType.ZeroCheck:
-        this.measureFlowName = 'MeasureZeroCheck';
-        break;
-      case MeasureType.RangeCheck:
-        this.measureFlowName = 'MeasureRangeCheck';
-        break;
+  /**
+   * 触发专属 Worker 执行硬件停止
+   * postMessage 是即时投递，不经过任何队列
+   */
+  private triggerStop(): void {
+    // 懒初始化：首次停止时才创建 Worker
+    if (!this.stopWorker) {
+      try {
+        this.stopWorker = new worker.ThreadWorker('Flow/ets/workers/StopWorker.ets');
+
+        // 监听停止结果（可选，用于日志或UI反馈）
+        this.stopWorker.onmessage = (e: MessageEvents) => {
+          const msg = e.data as MessageStopEvent;
+          if (msg.type === 'HARDWARE_STOP_DONE') {
+            console.info('TaskpoolManager', '停止成功');
+          } else if (msg.type === 'HARDWARE_STOP_ERROR') {
+            console.error('TaskpoolManager', '停止失败: %{public}s', msg.info);
+          }
+        };
+
+        this.stopWorker.onerror = (e: ErrorEvent) => {
+          console.error('TaskpoolManager', 'StopWorker异常: %{public}s', e.message);
+        };
+      } catch (err) {
+        console.error('TaskpoolManager', '创建StopWorker失败: %{public}s',
+          (err as Error).message);
+        return;
+      }
     }
-    this.enableResultHandle = true;
-    this.measureResult = createEmptyMeasureResult();
-    this.measureFlow = new MeasureFlow(this.measureFlowName.toString(), measureType);
-    this.measureFlow.measureType = measureType;
-    //调用MeasureFlow初始化，方便流程中调用Measure内部参数
-    this.measureFlow.OnStart();
-    this.measureFlow.OnProcess();
-    // 提取可序列化配置
-    this.currentMeasureConfig = this.measureFlow.exportConfig();
+
+    // 即时发送，不等待，不阻塞
+    this.stopWorker.postMessage({ type: 'HARDWARE_STOP' });
+    console.info('TaskpoolManager', '已向StopWorker发送停止指令');
   }
 
-  mergeMeasureResult(target: MeasureResult, source: Partial<MeasureResult>): void {
-    if (source.initReferenceAD !== undefined) target.initReferenceAD = source.initReferenceAD;
-    if (source.initMeasureAD !== undefined) target.initMeasureAD = source.initMeasureAD;
-    if (source.finalReferenceAD !== undefined) target.finalReferenceAD = source.finalReferenceAD;
-    if (source.finalMeasureAD !== undefined) target.finalMeasureAD = source.finalMeasureAD;
-     if (source.darkReferenceAD !== undefined) target.darkReferenceAD = source.darkReferenceAD;
-     if (source.darkMeasureAD !== undefined) target.darkMeasureAD = source.darkMeasureAD;
-    if (source.initThermostatTemp !== undefined) target.initThermostatTemp = source.initThermostatTemp;
-    if (source.initEnvironmentTemp !== undefined) target.initEnvironmentTemp = source.initEnvironmentTemp;
-    if (source.finalThermostatTemp !== undefined) target.finalThermostatTemp = source.finalThermostatTemp;
-    if (source.finalEnvironmentTemp !== undefined) target.finalEnvironmentTemp = source.finalEnvironmentTemp;
+  /**
+   * 应用退出时清理专属 Worker
+   */
+  destroy(): void {
+    if (this.stopWorker) {
+      this.stopWorker.terminate();
+      this.stopWorker = null;
+      console.info('TaskpoolManager', 'StopWorker已销毁');
+    }
+  }
+
+  /**
+   * 检测抛出事件为停止事件，向ProcessManager抛出错误，停止后续流程。
+   */
+  isTaskCancelledError(err: object): boolean {
+    if (!err || typeof err !== 'object') {
+      return false;
+    }
+
+    const error = err as BusinessErrorLike;
+
+    return error.name === 'BusinessError'
+      && error.data !== undefined
+      && error.data !== null
+      && error.data.error === 'taskpool:: task has been canceled';
+  }
+
+  /**
+   * 结果处理：筛选需要存储到数据库的数据，抛出由数据库存储。
+   */
+  resultHandle(workerPort: ThreadWorkerGlobalScope, task: Task, data: object): void {
+    const wrapper = data as TaskResultWrapper;
+
+    // 防御性检查：确保 wrapper 结构合法
+    if (!wrapper || typeof wrapper.type !== 'string') {
+      console.warn(`TLQQ, task: ${task.getTaskName()} 返回了非法的结果包装`);
+      workerPort.postMessage({ status: 'success', result: data });
+      return;
+    }
+
+    switch (wrapper.type) {
+      case 'measure': {
+        const measureData = wrapper.data as MeasureData | null;
+        if (measureData && !this.isStopping) {
+          console.info(`TLQQ, 获取到有效 MeasureData, dateTime=${measureData.dateTime}`);
+          workerPort.postMessage({
+            status: 'complete',
+            type: 'measureComplete',
+            data: measureData
+          });
+        } else {
+          console.warn(`TLQQ, task: ${task.getTaskName()} MeasureData 为空或已停止`);
+        }
+        break;
+      }
+
+      case 'calibrate': {
+        const caliData = wrapper.data as CaliData | null;
+        if (caliData && !this.isStopping) {
+          console.info(`TLQQ, 获取到有效 CaliData, dateTime=${caliData.dateTime}`);
+          workerPort.postMessage({
+            status: 'complete',
+            type: 'calibrateComplete',  // ← 注意：应与 measureComplete 区分
+            data: caliData
+          });
+        } else {
+          console.warn(`TLQQ, task: ${task.getTaskName()} CaliData 为空或已停止`);
+        }
+        break;
+      }
+
+      default: {
+        console.info(`TLQQ, task: ${task.getTaskName()} 返回通用结果, type=${wrapper.type}`);
+        break;
+      }
+    }
   }
 
   async runTask(workerPort: ThreadWorkerGlobalScope) {
@@ -125,19 +220,14 @@ export class TaskpoolManager {
       {
         item.task.setTaskParam(item.payload);
       }
-      if (this.currentMeasureConfig !== undefined)
-      {
-        item.task.setTaskParam(this.currentMeasureConfig);
-      }
       let currentTask = item.task.getTask();
       this.currentTask = currentTask;
       this.currentRunTime = new Date();
       await taskpool.execute(currentTask).then((data: object) => {
-        // ✅ 核心：将任务返回的部分字段合并到总结果中
-        // Object.assign 只覆盖 data 中存在的键，{} 空对象无任何影响
-        if (data && typeof data === 'object' && this.measureResult) {
-          this.mergeMeasureResult(this.measureResult, data as Partial<MeasureResult>);
-        }
+
+        //结果处理：目前只处理测量数据&校准数据
+        this.resultHandle(workerPort, item.task, data);
+
         // console.info(`TLQQ, task: ${task.getTaskName()} return result: ${JSON.stringify(data)}`);
         // console.info(`TLQQ, task: ${task.getTaskName()} return result no json: ${data}`);
         console.info(`TLQQ, task: ${item.task.getTaskName()} execute end, 向UI线程发送消息`);
@@ -147,21 +237,12 @@ export class TaskpoolManager {
         });
       }).catch((err: object) => {
         console.info(`TLQQ, task: ${item.task.getTaskName()} return err: ${JSON.stringify(err)}`);
+        if(this.isTaskCancelledError(err)){
+          throw new UserCancelledError();
+        }
       })
     }
 
-    if(this.measureFlow && this.enableResultHandle && !this.isStopping && this.measureResult)
-    {
-      this.measureFlow.ResultHandle(this.measureResult);
-      if (this.measureFlow.lastMeasureRecord) {
-        workerPort.postMessage({
-          status: 'complete',
-          type: 'measureComplete',
-          data: this.measureFlow.lastMeasureRecord
-        });
-        console.info("post measureComplete");
-      }
-    }
     this.endRunTime = new Date(); // 总任务结束时间
   }
 }

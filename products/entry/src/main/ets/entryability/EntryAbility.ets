@@ -7,9 +7,12 @@ import { ErrorEvent, MessageEvents, ThreadWorkerGlobalScope, worker } from '@kit
 import { ResultManager, SettingsManager, MeasureStatusManager } from 'dataservice';
 import { ModbusServer, CommLogEntry, EventBus, getGlobalModbusServer, setGlobalModbusServer, TcpConfig, SerialConfig } from 'modbus';
 import { Logger } from 'logger';
+import { AlarmManager, AlarmInfo, AlarmType } from 'alarm';
 import { CommunicationConfigService } from '../services/CommunicationConfigService';
 import { CommunicationConfig } from '../models/communicationConfigTypes';
 import { UserSettingsService } from '../services/UserSettingsService';
+import { ModbusCommandBridge } from '../services/ModbusCommandBridge';
+import { ModbusRuntimeSyncService } from '../services/ModbusRuntimeSyncService';
 
 const DOMAIN = 0x0000;
 
@@ -35,6 +38,24 @@ export default class EntryAbility extends UIAbility {
     } catch (error) {
       hilog.info(0x0000, '应用启动', '应用启动失败');
     }
+
+    try {
+      const alarmDir = this.context.filesDir + '/alarm/';
+      AlarmManager.getInstance().init(alarmDir);
+      hilog.info(0x0000, '应用启动', '告警文件路径：%{public}s', alarmDir);
+
+      const alarm : AlarmInfo = {
+        name: '试剂一抽取失败',
+        type: AlarmType.REAGENT,
+        level: 'Warning',
+        cause: '试剂瓶液位过低'
+      };
+      AlarmManager.getInstance().addAlarm(alarm);
+    } catch (error) {
+      const err = error as Error;
+      hilog.error(0x0000, '应用启动', '告警管理器初始化失败: %{public}s, stack: %{public}s',
+        err.message ?? JSON.stringify(error), err.stack ?? '');
+    }
     // 启动Modbus服务器
     this.startModbusServer();
   }
@@ -44,6 +65,12 @@ export default class EntryAbility extends UIAbility {
 
     // 设置全局变量，供页面访问
     setGlobalModbusServer(this.modbusServer);
+
+    // 启动 Modbus 控制指令桥接，把地址 272/273 的写请求转发给 OperationTaskService
+    ModbusCommandBridge.getInstance().start();
+
+    // 启动 Modbus 运行状态同步，把系统状态/当前动作写入 DataStore 的地址 16/17
+    ModbusRuntimeSyncService.getInstance().start();
 
     // 设置日志回调
     this.modbusServer.setLogCallback((log: CommLogEntry) => {
@@ -311,6 +338,12 @@ export default class EntryAbility extends UIAbility {
 
     // 清除全局变量
     setGlobalModbusServer(null);
+
+    // 停止 Modbus 控制指令桥接
+    ModbusCommandBridge.getInstance().stop();
+
+    // 停止 Modbus 运行状态同步
+    ModbusRuntimeSyncService.getInstance().stop();
 
     try {
       const resultManager = ResultManager.getInstance();

@@ -64,8 +64,8 @@ export class Meter {
     return communication.meter_setMeterFinishValveMap(map);
   }
 
-  getSingleOpticalAD(): number {
-    return communication.meter_getSingleOpticalAD();
+  getSingleOpticalAD(num: number): number {
+    return communication.meter_getSingleOpticalAD(num);
   }
 
   setRopinessMeterOverValue(cnt: number): boolean {

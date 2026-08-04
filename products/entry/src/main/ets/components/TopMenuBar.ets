@@ -1,6 +1,8 @@
 import { UiUtil } from 'base';
 import { WqMenuItem } from '../models/monitorTypes';
 
+export type UserMenuAction = 'switch' | 'logout' | 'screenshot';
+
 @Component
 export struct TopMenuBar {
   // Currently selected menu id, controls active style.
@@ -15,6 +17,53 @@ export struct TopMenuBar {
   // Keep click behavior in parent container to avoid scattering navigation state.
   onMenuClick: (menuId: string) => void = () => {
   };
+  // Dropdown actions emitted from the user icon menu.
+  onUserMenuAction: (action: UserMenuAction) => void = () => {
+  };
+  @State private userMenuVisible: boolean = false;
+
+  @Builder
+  private menuItem(label: string, action: UserMenuAction) {
+    Row() {
+      Text(label)
+        .fontSize(UiUtil.vh(1.75, 12, 18, this.viewportHeight, this.scaleFactor))
+        .fontColor('#333333')
+    }
+    .width('100%')
+    .height(UiUtil.vh(4.4, 32, 50, this.viewportHeight, this.scaleFactor))
+    .justifyContent(FlexAlign.Center)
+    .backgroundColor('#FFFFFF')
+    .onClick(() => {
+      this.userMenuVisible = false;
+      this.onUserMenuAction(action);
+    })
+  }
+
+  @Builder
+  private userMenuBuilder() {
+    Column() {
+      this.menuItem('切换用户', 'switch')
+      Divider()
+        .width('90%')
+        .strokeWidth(1)
+        .color('#F0F0F0')
+      this.menuItem('注销', 'logout')
+      Divider()
+        .width('90%')
+        .strokeWidth(1)
+        .color('#F0F0F0')
+      this.menuItem('截图', 'screenshot')
+    }
+    .width(UiUtil.vw(11, 92, 132, this.viewportWidth, this.scaleFactor))
+    .backgroundColor('#FFFFFF')
+    .borderRadius(UiUtil.vh(0.7, 5, 9, this.viewportHeight, this.scaleFactor))
+    .shadow({
+      radius: UiUtil.vh(0.5, 3, 8, this.viewportHeight, this.scaleFactor),
+      color: '#25000000',
+      offsetX: 0,
+      offsetY: UiUtil.vh(0.2, 1, 3, this.viewportHeight, this.scaleFactor)
+    })
+  }
 
   build() {
     // Top background panel with left navigation and right user menu.
@@ -74,7 +123,16 @@ export struct TopMenuBar {
         .backgroundColor(this.currentMenu === this.rightMenu.id ? '#4DB9B7' : 'transparent')
         .borderRadius(UiUtil.vh(0.8, 5, 10, this.viewportHeight, this.scaleFactor))
         .onClick(() => {
-          this.onMenuClick(this.rightMenu.id);
+          this.userMenuVisible = !this.userMenuVisible;
+        })
+        .bindPopup(this.userMenuVisible, {
+          builder: this.userMenuBuilder,
+          placement: Placement.Bottom,
+          enableArrow: false,
+          popupColor: '#FFFFFF',
+          onStateChange: (e) => {
+            this.userMenuVisible = e.isVisible;
+          }
         })
       }
       .height(UiUtil.vh(8.5, 50, 78, this.viewportHeight, this.scaleFactor))

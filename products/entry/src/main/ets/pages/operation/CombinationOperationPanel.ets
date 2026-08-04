@@ -7,6 +7,7 @@ import {
   OperationSolidButton
 } from './OperationControls';
 import { getEmptyRowIndexes, updateOperationRowValue, WqOperationConfigRow } from './OperationTypes';
+import { WorkerManager, CombinePipeOperationParams } from 'flow';
 
 @Component
 export struct CombinationOperationPanel {
@@ -20,15 +21,47 @@ export struct CombinationOperationPanel {
   onMessageChange: (value: string) => void = (_value: string) => {
   };
 
+  /**
+   * 从行数据中安全提取管道操作参数
+   */
+  private buildPipeParams(row: WqOperationConfigRow): CombinePipeOperationParams | null {
+    const volume = parseFloat(row.value);
+    console.info(`buildCombinePipeParams ${row}`);
+    if (isNaN(volume) || volume <= 0) return null;
+
+    return {
+      name: row.name,
+      source: row.value2,
+      dest: row.value3,
+      volume
+    };
+  }
+
   private updateCombinationOperationVolume(rowId: string, value: string): void {
     const rows = updateOperationRowValue(this.combinationOperationRows, rowId, 'value', value);
     this.combinationOperationRows = rows;
     this.onRowsChange(rows);
   }
 
-  private markCombinationOperationTodo(rowName: string): void {
+  private markCombinationOperationTodo(rowName: string, params: CombinePipeOperationParams): void {
+    console.info(`TLQQ, markCombinePipeOperationTodo postMessage `);
+    let postText: string =  'combinePipeOperator';
+    if (rowName == '停止组合操作'){
+      postText = 'stop';
+    }
+
+    WorkerManager.getInstance().postMessage({
+      type: postText,
+      data: {
+        name: params.name,
+        source: params.source,
+        dest: params.dest,
+        volume: params.volume,
+      },
+      timeStamp: Date.now()
+    });
     // TODO: 当前缺少组合操作对应的可写控制码和体积参数寄存器，暂不能真实下发。
-    const message = `${rowName} 暂未接入设备控制`;
+    const message = `${rowName}`;
     this.operationMessage = message;
     this.onMessageChange(message);
   }
@@ -62,7 +95,14 @@ export struct CombinationOperationPanel {
                 fontSizeValue: UiUtil.vh(1.85, 11, 15, this.viewportHeight, this.scaleFactor),
                 borderRadiusValue: UiUtil.vh(0.7, 4, 8, this.viewportHeight, this.scaleFactor),
                 onAction: () => {
-                  this.markCombinationOperationTodo(row.name);
+                  const params = this.buildPipeParams(row);
+                  if (params === null) {
+                    const errMsg = `${row.name} 参数无效，请检查体积/类型/方向配置`;
+                    this.operationMessage = errMsg;
+                    this.onMessageChange(errMsg);
+                    return;
+                  }
+                  this.markCombinationOperationTodo(row.name, params);
                 }
               })
             }
@@ -106,7 +146,11 @@ export struct CombinationOperationPanel {
           fontSizeValue: UiUtil.vh(1.85, 11, 15, this.viewportHeight, this.scaleFactor),
           borderRadiusValue: UiUtil.vh(0.7, 4, 8, this.viewportHeight, this.scaleFactor),
           onAction: () => {
-            this.markCombinationOperationTodo('停止组合操作');
+            const params = this.buildPipeParams(this.combinationOperationRows[0]);
+            if (params === null) {
+              return;
+            }
+            this.markCombinationOperationTodo('停止组合操作', params);
           }
         })
         Text(this.operationMessage)

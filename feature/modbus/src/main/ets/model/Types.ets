@@ -60,7 +60,7 @@ export interface TimeData {
   second: number; // 0-59
 }
 
-// 系统状态枚举
+// 系统状态枚举（与 PhotoTekSystemStatuses 对齐）
 export enum SystemStatus {
   IDLE = 0,
   MEASURING_WATER = 1,
@@ -78,10 +78,25 @@ export enum SystemStatus {
   SMART_DIAGNOSIS = 13,
   COMMUNICATION_TEST = 14,
   HARDWARE_TEST = 15,
+  MASTER_UPDATE = 16,
+  LIQUID_BOARD_UPDATE = 17,
+  TEMP_CTRL_UPDATE = 18,
+  SIGNAL_BOARD_UPDATE = 19,
+  REACTION_BOARD_UPDATE = 20,
+  DRIVE_BOARD_UPDATE = 21,
+  DEEP_CLEANING = 22,
+  COMBINE_OPERATION = 28,
+  ZERO_CALIBRATE = 29,
+  RANGE_CALIBRATE = 30,
+  QUALITY_CONTROL = 33,
+  CHECK_SOLUTION = 41,
+  METER_AD_ADJUST = 44,
+  MEASURE_AD_ADJUST = 45,
+  ONE_KEY_RENEW = 46,
   FAULT = 255
 }
 
-// 当前动作枚举
+// 当前动作枚举（与 PhotoTekCurrentActions 对齐）
 export enum CurrentAction {
   IDLE = 0,
   PRE_MEASURE_CLEAN = 1,
@@ -103,7 +118,25 @@ export enum CurrentAction {
   COOLING = 17,
   COLLECTING = 18,
   STANDING = 19,
-  CALIBRATING = 20
+  CALIBRATING = 20,
+  FILL_BLANK = 21,
+  DRAIN_BLANK = 22,
+  FILL_SAMPLE = 23,
+  DRAIN_SAMPLE = 24,
+  FILL_STANDARD = 25,
+  DRAIN_STANDARD = 26,
+  FILL_REAGENT_1 = 27,
+  DRAIN_REAGENT_1 = 28,
+  FILL_REAGENT_2 = 29,
+  DRAIN_REAGENT_2 = 30,
+  FILL_REAGENT_3 = 31,
+  DRAIN_REAGENT_3 = 32,
+  FILL_REAGENT_4 = 33,
+  DRAIN_REAGENT_4 = 34,
+  FILL_REAGENT_5 = 35,
+  DRAIN_REAGENT_5 = 36,
+  FILL_REAGENT_6 = 37,
+  DRAIN_REAGENT_6 = 38
 }
 // 测量控制操作码
 export enum MeasureControl {
@@ -122,6 +155,16 @@ export enum MeasureControl {
   RANGE_CALIBRATE = 14,
   ZERO_CHECK = 20,
   MEASURE_SPAN_CHECK = 21
+}
+
+// Modbus 控制指令事件名：feature/modbus 发送，products/entry 订阅后调用 OperationTaskService。
+export const MODBUS_CONTROL_COMMAND_EVENT = 'ModbusControlCommand';
+
+// Modbus 控制指令事件数据。
+export interface ModbusControlCommandEventData {
+  commandId: string;
+  sourceAddress: number;
+  value: number;
 }
 
 // 诊断结果枚举
